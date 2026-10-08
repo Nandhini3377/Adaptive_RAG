@@ -449,7 +449,7 @@ LangChain BM25 retriever per document, built from the `chunks` table on start an
 | Frontend | Next.js, TypeScript, Tailwind CSS, Recharts | Dashboard and Evaluation Lab charts |
 | Backend | Python 3.12 (pinned via uv), FastAPI, Pydantic, SQLAlchemy | Typed, async, auto docs |
 | Background work | FastAPI `BackgroundTasks` | No Redis/Celery needed for one user |
-| Standard RAG parts | LangChain (splitter, Qdrant vector store, BM25 retriever, ensemble/RRF, FastEmbed embeddings) | Saves time on well-known building blocks |
+| Standard RAG parts | LangChain (splitter, BM25 retriever, ensemble/RRF) | Saves time on well-known building blocks. Qdrant and FastEmbed are called directly so owner filtering stays explicit and testable |
 | Orchestration | LangGraph | Explicit state machine for the adaptive flow and self-correcting loop; scan, decision, router, and checks stay custom code |
 | LLM | **Sarvam 105B** (`sarvam-105b`) via OpenAI-compatible API (`https://api.sarvam.ai/v1/chat/completions`) | Existing credits; 128K context; JSON-schema output |
 | Embeddings | `BAAI/bge-small-en-v1.5` via **FastEmbed** (ONNX Runtime) | No PyTorch; small download; fast on an Intel CPU |

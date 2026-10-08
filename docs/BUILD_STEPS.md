@@ -109,4 +109,4 @@ Steps follow the PRD milestones. Every phase ends with something you can run and
 
 **How we work each step:** ask for the lesson → Claude gives instructions and the why → you type and run → paste the output → Claude checks it → mark the step done here.
 
-Progress: `[x]` 0.1 · `[-]` 0.2 · `[ ]` 1.1
+Progress: `[x]` 0.1 · `[-]` 0.2 · `[x]` 1.1 · `[x]` 1.5 · `[ ]` 1.2 (next)
