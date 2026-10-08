@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+node_modules/
+data/uploads/
+data/qdrant/
+data/app.db
+.pytest_cache/

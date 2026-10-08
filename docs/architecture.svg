@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1230" viewBox="0 0 1700 1230" font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+    <style>
+      .title { font-size: 28px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 15px; fill: #475569; }
+      .panelTitle { font-size: 14px; font-weight: 700; letter-spacing: 1.5px; }
+      .panelSub { font-size: 12px; fill: #64748b; }
+      .boxTitle { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .boxSub { font-size: 12px; fill: #475569; }
+      .label { font-size: 12px; fill: #334155; font-weight: 600; }
+      .small { font-size: 11px; fill: #64748b; }
+      .flow { stroke: #475569; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+      .flowDash { stroke: #475569; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; marker-end: url(#arrow); }
+      .loop { stroke: #d97706; stroke-width: 1.8; fill: none; marker-end: url(#arrowOrange); }
+    </style>
+  </defs>
+
+  <rect width="1700" height="1230" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="850" y="44" text-anchor="middle" class="title">Adaptive RAG Engine — Architecture</text>
+  <text x="850" y="70" text-anchor="middle" class="subtitle">Upload time decides which indexes to build  ·  Question time decides which index to use</text>
+
+  <!-- Client + API -->
+  <rect x="700" y="92" width="300" height="56" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="850" y="116" text-anchor="middle" class="boxTitle">Next.js Dashboard</text>
+  <text x="850" y="135" text-anchor="middle" class="boxSub">Upload · Analysis · Chat · Eval Lab · Traces</text>
+
+  <path d="M850 148 V184" class="flow"/>
+
+  <rect x="650" y="186" width="400" height="64" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+  <text x="850" y="213" text-anchor="middle" class="boxTitle">FastAPI</text>
+  <text x="850" y="234" text-anchor="middle" class="boxSub">JWT auth · validation · document permissions</text>
+
+  <path d="M650 218 H305 V288" class="flow"/>
+  <text x="478" y="208" text-anchor="middle" class="label">POST /documents → 202 · background task</text>
+  <path d="M1050 218 H1340 V288" class="flow"/>
+  <text x="1195" y="208" text-anchor="middle" class="label">POST /query</text>
+  <path d="M850 250 V288" class="flow"/>
+  <text x="860" y="274" class="small">metadata</text>
+
+  <!-- ============ LEFT: DOCUMENT PIPELINE ============ -->
+  <rect x="40" y="290" width="530" height="620" rx="16" fill="#eef4ff" stroke="#c7d7fe" stroke-width="1.5"/>
+  <text x="60" y="316" class="panelTitle" fill="#1d4ed8">DOCUMENT PIPELINE</text>
+  <text x="550" y="316" text-anchor="end" class="panelSub">upload time · background task</text>
+
+  <rect x="75" y="340" width="460" height="58" rx="9" fill="#ffffff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="364" text-anchor="middle" class="boxTitle">Upload + validate</text>
+  <text x="305" y="383" text-anchor="middle" class="boxSub">file type by content · size limit · dedupe by hash</text>
+  <path d="M305 398 V418" class="flow"/>
+
+  <rect x="75" y="420" width="460" height="58" rx="9" fill="#ffffff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="444" text-anchor="middle" class="boxTitle">Parse — PyMuPDF · python-docx · HTML/MD</text>
+  <text x="305" y="463" text-anchor="middle" class="boxSub">titles · paragraphs · tables · lists</text>
+  <path d="M305 478 V498" class="flow"/>
+
+  <!-- analysis group -->
+  <rect x="60" y="488" width="490" height="242" rx="12" fill="none" stroke="#1d4ed8" stroke-width="1.4" stroke-dasharray="6 5"/>
+  <rect x="418" y="479" width="124" height="19" rx="9.5" fill="#1d4ed8"/>
+  <text x="480" y="492.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff" letter-spacing="0.6">BEFORE CHUNKING</text>
+
+  <rect x="75" y="500" width="460" height="58" rx="9" fill="#dbe7ff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="524" text-anchor="middle" class="boxTitle">Step 1 · Quick scan</text>
+  <text x="305" y="543" text-anchor="middle" class="boxSub">full-text patterns + LLM on 5–10 sampled sections</text>
+  <path d="M305 558 V578" class="flow"/>
+
+  <rect x="75" y="580" width="460" height="58" rx="9" fill="#dbe7ff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="604" text-anchor="middle" class="boxTitle">Step 2 · Uploader intent</text>
+  <text x="305" y="623" text-anchor="middle" class="boxSub">facts · exact terms · connections · compare  (pre-filled, optional)</text>
+  <path d="M305 638 V658" class="flow"/>
+
+  <rect x="75" y="660" width="460" height="58" rx="9" fill="#dbe7ff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="684" text-anchor="middle" class="boxTitle">Step 3 · Strategy decision</text>
+  <text x="305" y="703" text-anchor="middle" class="boxSub">Vector · Hybrid · Graph + Hybrid  — with reason</text>
+  <path d="M305 718 V738" class="flow"/>
+
+  <rect x="75" y="740" width="460" height="58" rx="9" fill="#ffffff" stroke="#3b6fd8" stroke-width="1.4"/>
+  <text x="305" y="764" text-anchor="middle" class="boxTitle">Chunk + embed</text>
+  <text x="305" y="783" text-anchor="middle" class="boxSub">structure-aware chunks · embeddings</text>
+  <path d="M305 798 V818" class="flowDash"/>
+
+  <rect x="75" y="820" width="460" height="58" rx="9" fill="#ffffff" stroke="#3b6fd8" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="305" y="844" text-anchor="middle" class="boxTitle">Graph extraction</text>
+  <text x="305" y="863" text-anchor="middle" class="boxSub">only for Graph + Hybrid docs, or manual “Build graph”</text>
+
+  <!-- ============ CENTER: KNOWLEDGE STORES ============ -->
+  <rect x="640" y="290" width="420" height="530" rx="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="660" y="316" class="panelTitle" fill="#334155">KNOWLEDGE STORES</text>
+  <text x="1040" y="316" text-anchor="end" class="panelSub">local · only Neo4j in Docker</text>
+
+  <rect x="680" y="350" width="340" height="70" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="850" y="378" text-anchor="middle" class="boxTitle">Qdrant</text>
+  <text x="850" y="398" text-anchor="middle" class="boxSub">embedded mode · chunk vectors + owner</text>
+
+  <rect x="680" y="440" width="340" height="70" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="850" y="468" text-anchor="middle" class="boxTitle">BM25 index</text>
+  <text x="850" y="488" text-anchor="middle" class="boxSub">keyword search over the same chunks</text>
+
+  <rect x="680" y="530" width="340" height="70" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="850" y="558" text-anchor="middle" class="boxTitle">Neo4j</text>
+  <text x="850" y="578" text-anchor="middle" class="boxSub">Docker · entities + relationships</text>
+
+  <rect x="680" y="620" width="340" height="70" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="850" y="648" text-anchor="middle" class="boxTitle">SQLite</text>
+  <text x="850" y="668" text-anchor="middle" class="boxSub">users · docs · analyses · queries · traces</text>
+
+  <rect x="680" y="710" width="340" height="70" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="850" y="738" text-anchor="middle" class="boxTitle">Upload folder</text>
+  <text x="850" y="758" text-anchor="middle" class="boxSub">original files (private)</text>
+
+  <!-- writes: left -> stores -->
+  <path d="M535 769 H598 V385 H678" class="flow"/>
+  <path d="M598 475 H678" class="flow"/>
+  <path d="M535 849 H620 V565 H678" class="flowDash"/>
+  <text x="586" y="340" text-anchor="middle" class="small">write</text>
+
+  <!-- ============ RIGHT: QUERY PIPELINE ============ -->
+  <rect x="1130" y="290" width="530" height="710" rx="16" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.5"/>
+  <text x="1150" y="316" class="panelTitle" fill="#047857">QUERY PIPELINE</text>
+  <text x="1640" y="316" text-anchor="end" class="panelSub">question time · LangGraph</text>
+
+  <rect x="1160" y="340" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="364" text-anchor="middle" class="boxTitle">Query classifier</text>
+  <text x="1340" y="383" text-anchor="middle" class="boxSub">rules first · LLM only if unsure</text>
+  <path d="M1340 398 V418" class="flow"/>
+
+  <rect x="1160" y="420" width="360" height="58" rx="9" fill="#d1fae5" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="444" text-anchor="middle" class="boxTitle">Query router</text>
+  <text x="1340" y="463" text-anchor="middle" class="boxSub">start from doc strategy, adjust by query type</text>
+  <path d="M1340 478 V498" class="flow"/>
+
+  <rect x="1160" y="500" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="524" text-anchor="middle" class="boxTitle">Retrievers</text>
+  <text x="1340" y="543" text-anchor="middle" class="boxSub">Vector | Hybrid | Graph | Graph + Hybrid</text>
+  <path d="M1340 558 V578" class="flow"/>
+
+  <rect x="1160" y="580" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="604" text-anchor="middle" class="boxTitle">Fusion + rerank</text>
+  <text x="1340" y="623" text-anchor="middle" class="boxSub">reciprocal rank fusion · bge-reranker-base</text>
+  <path d="M1340 638 V658" class="flow"/>
+
+  <rect x="1160" y="660" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="684" text-anchor="middle" class="boxTitle">Retrieval evaluator</text>
+  <text x="1340" y="703" text-anchor="middle" class="boxSub">reranker score above threshold? (no LLM)</text>
+  <path d="M1340 718 V738" class="flow"/>
+  <text x="1350" y="733" class="label">yes</text>
+
+  <rect x="1160" y="740" width="360" height="58" rx="9" fill="#fff7ed" stroke="#d97706" stroke-width="1.4"/>
+  <text x="1340" y="764" text-anchor="middle" class="boxTitle">Generator — Sarvam 105B</text>
+  <text x="1340" y="783" text-anchor="middle" class="boxSub">answers only from evidence, with citations</text>
+  <path d="M1340 798 V818" class="flow"/>
+
+  <rect x="1160" y="820" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
+  <text x="1340" y="844" text-anchor="middle" class="boxTitle">Grounding check</text>
+  <text x="1340" y="863" text-anchor="middle" class="boxSub">faithfulness · citations · else refuse</text>
+  <path d="M1340 878 V898" class="flow"/>
+
+  <rect x="1160" y="900" width="360" height="66" rx="9" fill="#047857" stroke="#047857" stroke-width="1.4"/>
+  <text x="1340" y="926" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">Answer</text>
+  <text x="1340" y="947" text-anchor="middle" font-size="12" fill="#d1fae5">citations · graph path · scores · trace ID</text>
+
+  <!-- self-correction loop -->
+  <rect x="1540" y="575" width="105" height="70" rx="9" fill="#fff7ed" stroke="#d97706" stroke-width="1.4"/>
+  <text x="1592" y="600" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">Rewrite</text>
+  <text x="1592" y="617" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">query</text>
+  <text x="1592" y="635" text-anchor="middle" class="small">max 2 retries</text>
+  <path d="M1520 689 H1592 V647" class="loop"/>
+  <text x="1530" y="682" font-size="12" font-weight="600" fill="#d97706">no</text>
+  <path d="M1592 575 V529 H1522" class="loop"/>
+
+  <!-- reads: retrievers -> stores -->
+  <path d="M1160 529 H1090 V385 H1022" class="flow"/>
+  <path d="M1090 475 H1022" class="flow"/>
+  <path d="M1090 529 V565 H1022" class="flowDash"/>
+  <text x="1102" y="340" text-anchor="middle" class="small">search</text>
+
+  <!-- ============ SHARED SERVICES ============ -->
+  <rect x="40" y="1030" width="1620" height="128" rx="16" fill="#fafafa" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="60" y="1056" class="panelTitle" fill="#334155">SHARED SERVICES</text>
+  <text x="1640" y="1056" text-anchor="end" class="panelSub">used by both pipelines</text>
+
+  <rect x="60" y="1070" width="500" height="68" rx="9" fill="#fff7ed" stroke="#d97706" stroke-width="1.6" stroke-dasharray="7 4"/>
+  <text x="310" y="1097" text-anchor="middle" class="boxTitle">Sarvam 105B API  (external)</text>
+  <text x="310" y="1118" text-anchor="middle" class="boxSub">sample extraction · generate · grounding · rewrite · judge</text>
+
+  <rect x="600" y="1070" width="500" height="68" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="850" y="1097" text-anchor="middle" class="boxTitle">Local models</text>
+  <text x="850" y="1118" text-anchor="middle" class="boxSub">FastEmbed (ONNX) · bge-small · bge-reranker-base</text>
+
+  <rect x="1140" y="1070" width="500" height="68" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <text x="1390" y="1097" text-anchor="middle" class="boxTitle">Traces + LLM cache — SQLite (Langfuse optional)</text>
+  <text x="1390" y="1118" text-anchor="middle" class="boxSub">every upload and query · timings · tokens · cost</text>
+
+  <!-- Legend -->
+  <line x1="60" y1="1192" x2="100" y2="1192" class="flow"/>
+  <text x="110" y="1196" class="boxSub">data flow</text>
+  <line x1="200" y1="1192" x2="240" y2="1192" class="flowDash"/>
+  <text x="250" y="1196" class="boxSub">only for graph documents</text>
+  <line x1="430" y1="1192" x2="470" y2="1192" class="loop"/>
+  <text x="480" y="1196" class="boxSub">self-correction loop</text>
+  <rect x="630" y="1183" width="18" height="18" rx="4" fill="#dbe7ff" stroke="#3b6fd8"/>
+  <text x="656" y="1196" class="boxSub">document analysis</text>
+  <rect x="800" y="1183" width="18" height="18" rx="4" fill="#fff7ed" stroke="#d97706"/>
+  <text x="826" y="1196" class="boxSub">uses Sarvam API</text>
+  <text x="1640" y="1196" text-anchor="end" class="boxSub">Runs locally · only Neo4j in Docker · Sarvam API is external</text>
+</svg>
