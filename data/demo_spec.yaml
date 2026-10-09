@@ -1,0 +1,140 @@
+# Nimbus Labs: a fictional company used as the evaluation corpus.
+# scripts/generate_demo_docs.py turns this spec into 4 documents and 60 questions.
+# Because every fact comes from here, the gold answers are known exactly.
+
+company: Nimbus Labs
+
+teams:
+  - {name: Platform, lead: Priya Raman, channel: "#platform-oncall"}
+  - {name: Identity, lead: Arjun Mehta, channel: "#identity-oncall"}
+  - {name: Security Engineering, lead: Leena Thomas, channel: "#security"}
+  - {name: Payments, lead: Karthik Iyer, channel: "#payments-oncall"}
+  - {name: Commerce, lead: Sara Kim, channel: "#commerce-oncall"}
+  - {name: Risk, lead: Daniel Osei, channel: "#risk-oncall"}
+  - {name: Data Platform, lead: Meera Nair, channel: "#data-oncall"}
+
+services:
+  - name: API Gateway
+    team: Platform
+    depends_on: [Auth Service]
+    purpose: routes every external request to the right internal service
+  - name: Auth Service
+    team: Identity
+    depends_on: [User Directory, Token Vault]
+    purpose: checks passwords and issues session tokens
+  - name: User Directory
+    team: Identity
+    depends_on: [Postgres Cluster]
+    purpose: stores user accounts and group membership
+  - name: Token Vault
+    team: Security Engineering
+    depends_on: []
+    purpose: stores signing keys and rotates them every 30 days
+  - name: Payments Service
+    team: Payments
+    depends_on: [Auth Service, Ledger, Fraud Check]
+    purpose: charges cards and issues refunds
+  - name: Orders Service
+    team: Commerce
+    depends_on: [Payments Service, Inventory Service, Auth Service]
+    purpose: creates and tracks customer orders
+  - name: Inventory Service
+    team: Commerce
+    depends_on: [Postgres Cluster]
+    purpose: tracks stock levels in every warehouse
+  - name: Ledger
+    team: Payments
+    depends_on: [Postgres Cluster]
+    purpose: records every money movement as a double-entry transaction
+  - name: Fraud Check
+    team: Risk
+    depends_on: [Feature Store]
+    purpose: scores each payment for fraud risk in under 50 ms
+  - name: Feature Store
+    team: Data Platform
+    depends_on: [Event Bus]
+    purpose: serves precomputed customer features to models
+  - name: Notification Service
+    team: Platform
+    depends_on: [Event Bus, User Directory]
+    purpose: sends email and SMS messages to customers
+  - name: Event Bus
+    team: Platform
+    depends_on: []
+    purpose: carries events between services
+  - name: Postgres Cluster
+    team: Data Platform
+    depends_on: []
+    purpose: hosts the relational databases
+  - name: User Profile Service
+    team: Identity
+    depends_on: [User Directory, Auth Service]
+    purpose: stores display names, avatars, and preferences
+  - name: Reporting Service
+    team: Data Platform
+    depends_on: [Ledger, Event Bus]
+    purpose: builds daily finance and usage reports
+
+migrations:
+  - id: MIG-2026-04
+    name: payment migration
+    changes: Ledger
+    description: moves the Ledger database to Postgres 16 with a new schema
+
+handbook:
+  annual_leave_days: 20
+  sick_leave_days: 10
+  casual_leave_days: 5
+  carry_over_max_days: 5
+  core_hours: "10:00 to 16:00"
+  remote_days_per_week: 3
+  expense_limit_without_approval: "₹5,000"
+  notice_period_days: 60
+  probation_months: 6
+  laptop_refresh_years: 3
+  learning_budget: "₹40,000"
+  parental_leave_weeks: 26
+
+security_policies:
+  - {id: SEC-101, name: Password policy, rule: "Passwords must be at least 14 characters and every account must use multi-factor authentication"}
+  - {id: SEC-102, name: Data classification, rule: "All data is labelled Public, Internal, Confidential, or Restricted"}
+  - {id: SEC-103, name: Access reviews, rule: "Team leads review who has production access every quarter"}
+  - {id: SEC-104, name: Incident reporting, rule: "Suspected security incidents must be reported to #security within 1 hour"}
+  - {id: SEC-105, name: Data retention, rule: "Customer data is deleted within 30 days of account closure, and application logs are kept for 90 days"}
+  - {id: SEC-106, name: Encryption, rule: "Data is encrypted with AES-256 at rest and TLS 1.3 in transit"}
+  - {id: SEC-107, name: Vendor review, rule: "Every new vendor that handles customer data needs a security review before signing"}
+
+error_codes:
+  - {code: AUTH-401, meaning: "the password is wrong", action: "ask the user to reset their password"}
+  - {code: AUTH-402, meaning: "the account is locked after 5 failed sign-in attempts", action: "unlock it from the admin console after verifying identity"}
+  - {code: AUTH-403, meaning: "the session token has expired", action: "ask the user to sign in again"}
+  - {code: AUTH-404, meaning: "the account does not exist", action: "check the email address for typos"}
+  - {code: AUTH-429, meaning: "too many requests from one IP address", action: "wait 15 minutes before retrying"}
+  - {code: PAY-402, meaning: "the card was declined by the bank", action: "ask the customer to use another card"}
+  - {code: PAY-409, meaning: "a duplicate payment was blocked", action: "check the Ledger for the original transaction"}
+  - {code: PAY-503, meaning: "the Ledger is unavailable", action: "follow incident runbook INC-2041"}
+
+severities:
+  - {level: SEV1, meaning: "customers cannot pay or sign in", response: 15 minutes}
+  - {level: SEV2, meaning: "a major feature is degraded", response: 30 minutes}
+  - {level: SEV3, meaning: "a minor feature is broken", response: 4 hours}
+  - {level: SEV4, meaning: "a cosmetic or internal issue", response: next business day}
+
+incidents:
+  - id: INC-2041
+    title: Ledger unavailable
+    service: Ledger
+    cause: a Postgres Cluster failover left the Ledger connected to a read-only replica
+    fix: restart the Ledger connection pool so it reconnects to the new primary
+  - id: INC-2077
+    title: Token signing failures
+    service: Token Vault
+    cause: a signing key expired before rotation finished
+    fix: trigger a manual key rotation in the Token Vault
+
+# Expected strategy per document (documented intent of the corpus design).
+documents:
+  - {file: employee_handbook.md, profile: plain prose, intents: [facts], expected_strategy: vector}
+  - {file: security_policy.html, profile: IDs and tables, intents: [facts, exact_terms], expected_strategy: hybrid}
+  - {file: architecture.docx, profile: many relationships, intents: [connections, compare], expected_strategy: graph_hybrid}
+  - {file: incident_runbook.md, profile: tables and cross-references, intents: [facts, exact_terms, connections], expected_strategy: graph_hybrid}

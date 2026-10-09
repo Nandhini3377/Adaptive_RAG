@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><title>Nimbus Labs Security Policy</title></head>
+<body>
+<nav><a href="/">Intranet home</a></nav>
+<h1>Nimbus Labs Security Policy</h1>
+<p>This policy applies to every employee, contractor, and system at Nimbus Labs.
+Each rule has an ID such as SEC-101 so that audits and tickets can refer to it.</p>
+
+<h2>Policy summary</h2>
+<table>
+<tr><th>ID</th><th>Policy</th><th>Rule</th></tr>
+<tr><td>SEC-101</td><td>Password policy</td><td>Passwords must be at least 14 characters and every account must use multi-factor authentication</td></tr>
+<tr><td>SEC-102</td><td>Data classification</td><td>All data is labelled Public, Internal, Confidential, or Restricted</td></tr>
+<tr><td>SEC-103</td><td>Access reviews</td><td>Team leads review who has production access every quarter</td></tr>
+<tr><td>SEC-104</td><td>Incident reporting</td><td>Suspected security incidents must be reported to #security within 1 hour</td></tr>
+<tr><td>SEC-105</td><td>Data retention</td><td>Customer data is deleted within 30 days of account closure, and application logs are kept for 90 days</td></tr>
+<tr><td>SEC-106</td><td>Encryption</td><td>Data is encrypted with AES-256 at rest and TLS 1.3 in transit</td></tr>
+<tr><td>SEC-107</td><td>Vendor review</td><td>Every new vendor that handles customer data needs a security review before signing</td></tr>
+</table>
+
+<h2>Policy details</h2>
+<p>SEC-101 (Password policy): Passwords must be at least 14 characters and every account must use multi-factor authentication.</p>
+<p>SEC-102 (Data classification): All data is labelled Public, Internal, Confidential, or Restricted.</p>
+<p>SEC-103 (Access reviews): Team leads review who has production access every quarter.</p>
+<p>SEC-104 (Incident reporting): Suspected security incidents must be reported to #security within 1 hour.</p>
+<p>SEC-105 (Data retention): Customer data is deleted within 30 days of account closure, and application logs are kept for 90 days.</p>
+<p>SEC-106 (Encryption): Data is encrypted with AES-256 at rest and TLS 1.3 in transit.</p>
+<p>SEC-107 (Vendor review): Every new vendor that handles customer data needs a security review before signing.</p>
+
+<h2>Authentication and payment error codes</h2>
+<p>Support staff use these codes from the API Gateway logs to help customers.</p>
+<table>
+<tr><th>Code</th><th>Meaning</th><th>What to do</th></tr>
+<tr><td>AUTH-401</td><td>the password is wrong</td><td>ask the user to reset their password</td></tr>
+<tr><td>AUTH-402</td><td>the account is locked after 5 failed sign-in attempts</td><td>unlock it from the admin console after verifying identity</td></tr>
+<tr><td>AUTH-403</td><td>the session token has expired</td><td>ask the user to sign in again</td></tr>
+<tr><td>AUTH-404</td><td>the account does not exist</td><td>check the email address for typos</td></tr>
+<tr><td>AUTH-429</td><td>too many requests from one IP address</td><td>wait 15 minutes before retrying</td></tr>
+<tr><td>PAY-402</td><td>the card was declined by the bank</td><td>ask the customer to use another card</td></tr>
+<tr><td>PAY-409</td><td>a duplicate payment was blocked</td><td>check the Ledger for the original transaction</td></tr>
+<tr><td>PAY-503</td><td>the Ledger is unavailable</td><td>follow incident runbook INC-2041</td></tr>
+</table>
+
+<h2>Error code details</h2>
+<p>Error AUTH-401 means the password is wrong; ask the user to reset their password.</p>
+<p>Error AUTH-402 means the account is locked after 5 failed sign-in attempts; unlock it from the admin console after verifying identity.</p>
+<p>Error AUTH-403 means the session token has expired; ask the user to sign in again.</p>
+<p>Error AUTH-404 means the account does not exist; check the email address for typos.</p>
+<p>Error AUTH-429 means too many requests from one IP address; wait 15 minutes before retrying.</p>
+<p>Error PAY-402 means the card was declined by the bank; ask the customer to use another card.</p>
+<p>Error PAY-409 means a duplicate payment was blocked; check the Ledger for the original transaction.</p>
+<p>Error PAY-503 means the Ledger is unavailable; follow incident runbook INC-2041.</p>
+<footer>Owned by Security Engineering. Last reviewed in 2026.</footer>
+</body></html>
