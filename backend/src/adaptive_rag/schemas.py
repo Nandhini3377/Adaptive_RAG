@@ -56,3 +56,21 @@ class Answer(BaseModel):
     output_tokens: int = 0
     reasoning_tokens: int = 0
     cost_inr: float = 0.0
+
+
+Mode = Literal["vector", "hybrid", "graph", "graph_hybrid"]
+
+
+class GraphPath(BaseModel):
+    """A chain of entities and relations found in the graph, e.g. A -DEPENDS_ON-> B."""
+
+    nodes: list[str]
+    relations: list[str]
+    chunk_ids: list[str] = []
+
+
+class RetrievalResult(BaseModel):
+    """What a retriever found: ranked chunks, plus graph paths in graph modes."""
+
+    hits: list[SearchHit]
+    graph_paths: list[GraphPath] = []

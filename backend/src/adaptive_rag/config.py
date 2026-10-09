@@ -73,7 +73,9 @@ class Settings(BaseSettings):
     chunk_max_chars: int = 1500
 
     # Retrieval
-    top_k: int = 5
+    top_k: int = 5  # chunks given to the LLM
+    candidate_k: int = 20  # chunks each retriever returns before fusion and reranking
+    rrf_k: int = 60  # reciprocal rank fusion constant (standard value)
 
 
 settings = Settings()
