@@ -21,10 +21,7 @@ def cosine(a: list[float], b: list[float]) -> float:
 def ranked(question: str) -> list[tuple[float, str]]:
     """Chunks sorted from most to least similar to the question."""
     q = embed_query(question)
-    scores = [
-        (cosine(q, v), text)
-        for v, text in zip(embed_texts(CHUNKS), CHUNKS, strict=True)
-    ]
+    scores = [(cosine(q, v), text) for v, text in zip(embed_texts(CHUNKS), CHUNKS, strict=True)]
     return sorted(scores, reverse=True)
 
 

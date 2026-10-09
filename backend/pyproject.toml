@@ -1,22 +1,28 @@
 [project]
 name = "adaptive-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Adaptive RAG engine: picks Vector, Hybrid, or GraphRAG per document and routes each query"
 readme = "README.md"
 authors = [
     { name = "Nandhini3377", email = "nandhini23012003@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "bcrypt>=5.0.0",
     "beautifulsoup4>=4.15.0",
+    "fastapi>=0.143.0",
     "fastembed>=0.7.4",
     "markdown-it-py>=4.2.0",
     "onnxruntime<1.24",
     "openai>=3.26.1",
     "pydantic-settings>=2.15.0",
+    "pyjwt>=2.15.1",
     "pymupdf>=1.28.2",
     "python-docx>=1.2.0",
+    "python-multipart>=0.0.32",
     "qdrant-client>=1.19.1",
+    "sqlalchemy>=2.1.4",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [project.scripts]
@@ -38,3 +44,9 @@ filterwarnings = [
     # PyMuPDF's compiled bindings trigger this on import; harmless
     "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
 ]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

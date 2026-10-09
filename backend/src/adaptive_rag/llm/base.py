@@ -27,10 +27,13 @@ class LLMResponse(BaseModel):
     output_tokens: int  # includes reasoning tokens
     reasoning_tokens: int = 0
     cost_inr: float = 0.0
+    cached: bool = False  # True when served from the response cache (free)
 
 
 class LLM(ABC):
     """A chat model that answers in plain text or in JSON matching a schema."""
+
+    model_name: str = ""
 
     @abstractmethod
     def complete(

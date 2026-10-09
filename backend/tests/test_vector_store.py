@@ -21,9 +21,7 @@ def store() -> VectorStore:
         [
             make_chunk("Employees receive 20 days of annual leave per year."),
             make_chunk("Leave the building by the nearest exit during a fire alarm."),
-            make_chunk(
-                "The Payment service depends on the Auth service.", doc="architecture"
-            ),
+            make_chunk("The Payment service depends on the Auth service.", doc="architecture"),
             make_chunk("Bob's salary is confidential.", owner="bob"),
         ]
     )

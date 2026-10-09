@@ -24,20 +24,44 @@ class Settings(BaseSettings):
     sarvam_model: str = "sarvam-105b"
     llm_timeout_seconds: float = 120.0
     llm_max_retries: int = 3
+    # Extra tries when a reasoning model thinks past max_tokens without answering
+    llm_truncation_retries: int = 1
     # Price in INR per million tokens (PRD Section 14); reasoning counts as output
     llm_input_price_inr: float = 29.28
     llm_output_price_inr: float = 73.20
+    # Reuse saved answers for identical calls (dev and eval cost ~nothing)
+    llm_cache_enabled: bool = True
+    # Sarvam reasons for ~1-4K tokens before answering (measured), rarely more
+    answer_max_tokens: int = 8000
+
+    # Auth
+    jwt_secret: SecretStr = SecretStr("dev-only-change-me")
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24
+
+    # Uploads
+    max_upload_mb: int = 50
 
     # Local models
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     # BGE models search better when questions (not chunks) carry this instruction
-    embedding_query_prefix: str = (
-        "Represent this sentence for searching relevant passages: "
-    )
+    embedding_query_prefix: str = "Represent this sentence for searching relevant passages: "
     reranker_model: str = "BAAI/bge-reranker-base"
 
     # Storage
     data_dir: Path = PROJECT_ROOT / "data"
+    # Empty means SQLite at data/app.db; set a URL to use another database
+    database_url: str = ""
+
+    @property
+    def db_url(self) -> str:
+        """The database URL actually used."""
+        return self.database_url or f"sqlite:///{self.data_dir / 'app.db'}"
+
+    @property
+    def upload_dir(self) -> Path:
+        """Where original uploaded files are kept."""
+        return self.data_dir / "uploads"
 
     # Chunking: ~1500 characters is ~300-400 tokens, inside the embedder's 512 limit
     chunk_max_chars: int = 1500

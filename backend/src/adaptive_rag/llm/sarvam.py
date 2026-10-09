@@ -18,7 +18,7 @@ class SarvamLLM(LLM):
         """`http_client` lets tests swap in a fake server."""
         if not settings.sarvam_api_key.get_secret_value():
             raise LLMError("SARVAM_API_KEY is not set. Add it to the .env file.")
-        self._model = settings.sarvam_model
+        self.model_name = settings.sarvam_model
         # The SDK retries rate limits (429) and server errors (5xx) with backoff.
         self._client = OpenAI(
             api_key=settings.sarvam_api_key.get_secret_value(),
@@ -66,44 +66,48 @@ class SarvamLLM(LLM):
         reasoning_effort: ReasoningEffort,
         response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
+        """Call the API; retry when the model thinks past the cap without answering."""
         extra = {"response_format": response_format} if response_format else {}
-        try:
-            completion = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,  # type: ignore[arg-type]
-                max_tokens=max_tokens,
-                reasoning_effort=reasoning_effort,
-                **extra,
-            )
-        except openai.APIError as error:
-            raise LLMError(f"Sarvam call failed: {error}") from error
+        spent = {"input": 0, "output": 0, "reasoning": 0}  # failed attempts are billed too
+        for _attempt in range(1 + settings.llm_truncation_retries):
+            try:
+                completion = self._client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,  # type: ignore[arg-type]
+                    max_tokens=max_tokens,
+                    reasoning_effort=reasoning_effort,
+                    **extra,
+                )
+            except openai.APIError as error:
+                raise LLMError(f"Sarvam call failed: {error}") from error
 
-        choice = completion.choices[0]
-        text = (choice.message.content or "").strip()
-        if not text and choice.finish_reason == "length":
-            # A reasoning model can spend the whole budget thinking.
-            raise LLMError(
-                f"Ran out of tokens before answering (max_tokens={max_tokens}). "
-                "Raise max_tokens or lower reasoning_effort."
-            )
+            usage = completion.usage
+            details = usage.completion_tokens_details if usage else None
+            spent["input"] += usage.prompt_tokens if usage else 0
+            spent["output"] += usage.completion_tokens if usage else 0
+            spent["reasoning"] += (details.reasoning_tokens or 0) if details else 0
 
-        usage = completion.usage
-        input_tokens = usage.prompt_tokens if usage else 0
-        output_tokens = usage.completion_tokens if usage else 0
-        details = usage.completion_tokens_details if usage else None
-        return LLMResponse(
-            text=text,
-            model=completion.model or self._model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            reasoning_tokens=(details.reasoning_tokens or 0) if details else 0,
-            cost_inr=_cost_inr(input_tokens, output_tokens),
+            choice = completion.choices[0]
+            text = (choice.message.content or "").strip()
+            # Reasoning length varies a lot per call, so a retry usually answers.
+            if text or choice.finish_reason != "length":
+                return LLMResponse(
+                    text=text,
+                    model=completion.model or self.model_name,
+                    input_tokens=spent["input"],
+                    output_tokens=spent["output"],
+                    reasoning_tokens=spent["reasoning"],
+                    cost_inr=_cost_inr(spent["input"], spent["output"]),
+                )
+
+        raise LLMError(
+            f"Ran out of tokens before answering (max_tokens={max_tokens}). "
+            "Raise max_tokens or lower reasoning_effort."
         )
 
 
 def _cost_inr(input_tokens: int, output_tokens: int) -> float:
     """Price of one call in rupees."""
     return (
-        input_tokens * settings.llm_input_price_inr
-        + output_tokens * settings.llm_output_price_inr
+        input_tokens * settings.llm_input_price_inr + output_tokens * settings.llm_output_price_inr
     ) / 1_000_000

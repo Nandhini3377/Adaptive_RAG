@@ -58,8 +58,7 @@ class VectorStore:
             limit=top_k or settings.top_k,
         )
         return [
-            SearchHit(chunk=Chunk(**point.payload), score=point.score)
-            for point in result.points
+            SearchHit(chunk=Chunk(**point.payload), score=point.score) for point in result.points
         ]
 
     def delete_document(self, document_id: str) -> None:
@@ -90,8 +89,6 @@ def _owner_filter(owner_id: str, document_ids: list[str] | None) -> models.Filte
     conditions: list[models.Condition] = [_match("owner_id", owner_id)]
     if document_ids:
         conditions.append(
-            models.FieldCondition(
-                key="document_id", match=models.MatchAny(any=document_ids)
-            )
+            models.FieldCondition(key="document_id", match=models.MatchAny(any=document_ids))
         )
     return models.Filter(must=conditions)

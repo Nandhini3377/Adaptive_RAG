@@ -181,8 +181,7 @@ def _html_blocks(html: str) -> Iterator[Block]:
 
 def _html_table(table: Tag) -> str:
     rows = [
-        [cell.get_text(" ") for cell in row.find_all(["th", "td"])]
-        for row in table.find_all("tr")
+        [cell.get_text(" ") for cell in row.find_all(["th", "td"])] for row in table.find_all("tr")
     ]
     return _table_to_markdown(rows)
 
@@ -242,17 +241,9 @@ def _pdf_blocks(pdf: pymupdf.Document) -> Iterator[Block]:
 
 def _pdf_text_block(block: dict, body_size: float, page_number: int) -> Block:
     """Classify one PDF text block as heading, list, or paragraph."""
-    lines = [
-        "".join(span["text"] for span in line["spans"]).strip()
-        for line in block["lines"]
-    ]
+    lines = ["".join(span["text"] for span in line["spans"]).strip() for line in block["lines"]]
     lines = [line for line in lines if line]
-    spans = [
-        span
-        for line in block["lines"]
-        for span in line["spans"]
-        if span["text"].strip()
-    ]
+    spans = [span for line in block["lines"] for span in line["spans"] if span["text"].strip()]
     text = " ".join(lines)
     if not spans or text.isdigit():
         return "paragraph", "", page_number  # empty, or just a page number
@@ -260,9 +251,7 @@ def _pdf_text_block(block: dict, body_size: float, page_number: int) -> Block:
     size = max(span["size"] for span in spans)
     all_bold = all(span["flags"] & 16 for span in spans)  # bit 16 = bold
     short = len(text) <= _PDF_HEADING_MAX_CHARS
-    if short and (
-        size >= body_size * _PDF_HEADING_SIZE_RATIO or (all_bold and len(lines) == 1)
-    ):
+    if short and (size >= body_size * _PDF_HEADING_SIZE_RATIO or (all_bold and len(lines) == 1)):
         return "heading", text, page_number
     if _LIST_ITEM.match(lines[0]):
         return (

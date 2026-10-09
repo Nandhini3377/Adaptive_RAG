@@ -109,10 +109,7 @@ def test_markdown_elements_carry_their_section():
 def test_markdown_multiline_paragraph_stays_together():
     """Lines without a blank line between them form one paragraph."""
     paragraph = parse_markdown(HANDBOOK_MD)[1]
-    assert (
-        paragraph.text
-        == "Employees receive 20 days of annual leave.\nUnused days carry over."
-    )
+    assert paragraph.text == "Employees receive 20 days of annual leave.\nUnused days carry over."
 
 
 def test_markdown_list_is_one_element():
@@ -243,9 +240,7 @@ def make_pdf(path: Path) -> Path:
     pdf = pymupdf.open()
     page = pdf.new_page()
     page.insert_text((72, 72), "Leave Policy", fontsize=20)
-    page.insert_text(
-        (72, 100), "Employees receive 20 days of annual leave.", fontsize=11
-    )
+    page.insert_text((72, 100), "Employees receive 20 days of annual leave.", fontsize=11)
     page.insert_text((72, 114), "Unused days carry over to next year.", fontsize=11)
     page.insert_text((72, 140), "• Sick leave: 10 days", fontsize=11)
     page.insert_text((72, 154), "• Casual leave: 5 days", fontsize=11)
@@ -282,9 +277,7 @@ def test_pdf_text_is_joined_and_table_is_whole(tmp_path):
         "Employees receive 20 days of annual leave. Unused days carry over to next year."
     )
     assert elements[2].text == "- Sick leave: 10 days\n- Casual leave: 5 days"
-    assert (
-        elements[3].text == "| Type | Days |\n|---|---|\n| Sick | 10 |\n| Casual | 5 |"
-    )
+    assert elements[3].text == "| Type | Days |\n|---|---|\n| Sick | 10 |\n| Casual | 5 |"
     assert not any(e.text == "Casual" for e in elements)
 
 

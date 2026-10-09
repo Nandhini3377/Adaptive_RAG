@@ -52,9 +52,7 @@ def fake_sarvam(content, finish_reason="stop", status=200, seen=None):
 @pytest.fixture(autouse=True)
 def api_key(monkeypatch):
     """Tests never depend on a real key being present."""
-    monkeypatch.setattr(
-        "adaptive_rag.llm.sarvam.settings.sarvam_api_key", SecretStr("test-key")
-    )
+    monkeypatch.setattr("adaptive_rag.llm.sarvam.settings.sarvam_api_key", SecretStr("test-key"))
     monkeypatch.setattr("adaptive_rag.llm.sarvam.settings.llm_max_retries", 0)
 
 
@@ -86,9 +84,7 @@ def test_complete_json_sends_schema_and_parses_data():
     seen = []
     schema = {"type": "object", "properties": {"city": {"type": "string"}}}
     llm = SarvamLLM(http_client=fake_sarvam('{"city": "Paris"}', seen=seen))
-    response = llm.complete_json(
-        [{"role": "user", "content": "?"}], schema, name="capital"
-    )
+    response = llm.complete_json([{"role": "user", "content": "?"}], schema, name="capital")
     assert response.data == {"city": "Paris"}
     sent_format = seen[0]["response_format"]
     assert sent_format["type"] == "json_schema"
@@ -101,6 +97,20 @@ def test_complete_json_rejects_non_json():
     llm = SarvamLLM(http_client=fake_sarvam("Paris, I think"))
     with pytest.raises(LLMError, match="Expected JSON"):
         llm.complete_json([{"role": "user", "content": "?"}], {"type": "object"})
+
+
+def test_running_out_of_tokens_retries_once_then_answers():
+    """A truncated attempt is retried; the tokens of both attempts are counted."""
+    replies = iter([("", "length"), ("hello", "stop")])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        content, finish = next(replies)
+        return fake_sarvam(content, finish)._transport.handle_request(request)
+
+    llm = SarvamLLM(http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    response = llm.complete([{"role": "user", "content": "hi"}])
+    assert response.text == "hello"
+    assert response.input_tokens == 2000  # 1000 per attempt
 
 
 def test_running_out_of_tokens_is_a_clear_error():
@@ -119,24 +129,18 @@ def test_api_errors_become_llm_errors():
 
 def test_missing_key_fails_at_startup(monkeypatch):
     """No key gives a clear message, not a confusing 403 later."""
-    monkeypatch.setattr(
-        "adaptive_rag.llm.sarvam.settings.sarvam_api_key", SecretStr("")
-    )
+    monkeypatch.setattr("adaptive_rag.llm.sarvam.settings.sarvam_api_key", SecretStr(""))
     with pytest.raises(LLMError, match="SARVAM_API_KEY"):
         SarvamLLM()
 
 
 @pytest.mark.live
-@pytest.mark.skipif(
-    not os.getenv("RUN_LIVE_LLM"), reason="set RUN_LIVE_LLM=1 to call Sarvam"
-)
+@pytest.mark.skipif(not os.getenv("RUN_LIVE_LLM"), reason="set RUN_LIVE_LLM=1 to call Sarvam")
 def test_live_sarvam_plain_and_json(monkeypatch):
     """One real round trip: plain text and schema-shaped JSON."""
     monkeypatch.undo()  # use the real key from .env
     llm = SarvamLLM()
-    plain = llm.complete(
-        [{"role": "user", "content": "Reply with just the word: hello"}]
-    )
+    plain = llm.complete([{"role": "user", "content": "Reply with just the word: hello"}])
     assert "hello" in plain.text.lower()
     schema = {
         "type": "object",

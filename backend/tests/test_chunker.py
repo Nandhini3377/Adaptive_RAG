@@ -24,9 +24,7 @@ Never share your password.
 
 
 def chunk(elements, max_chars=1500):
-    return chunk_elements(
-        elements, document_id="handbook", owner_id="alice", max_chars=max_chars
-    )
+    return chunk_elements(elements, document_id="handbook", owner_id="alice", max_chars=max_chars)
 
 
 def test_small_section_text_packs_into_one_chunk():

@@ -33,3 +33,26 @@ class SearchHit(BaseModel):
 
     chunk: Chunk
     score: float
+
+
+class Citation(BaseModel):
+    """One evidence chunk the answer refers to as [n]."""
+
+    number: int
+    chunk_id: str
+    document_id: str
+    section: str = ""
+    page: int | None = None
+    text: str
+
+
+class Answer(BaseModel):
+    """A generated answer, the chunks it cites, and what it cost."""
+
+    text: str
+    citations: list[Citation] = []
+    insufficient_evidence: bool = False
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    cost_inr: float = 0.0
