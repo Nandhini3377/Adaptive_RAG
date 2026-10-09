@@ -1,13 +1,24 @@
-"""Upload, list, inspect, and delete documents."""
+"""Upload, analyze, choose intent, build indexes, list, inspect, and delete documents."""
 
 from datetime import datetime
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 
 from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep, owned_document
 from adaptive_rag.ingest import jobs
+from adaptive_rag.ingest.intent import INTENT_LABELS
+from adaptive_rag.schemas import DocumentProfile, Intent
 from adaptive_rag.store import db, files
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -37,11 +48,44 @@ class DocumentOut(BaseModel):
         return cls.model_validate(document, from_attributes=True)
 
 
+class IntentOption(BaseModel):
+    id: Intent
+    label: str
+    suggested: bool
+
+
+class AnalysisOut(BaseModel):
+    status: str
+    profile: DocumentProfile
+    intent_options: list[IntentOption]
+    suggested_intents: list[str]
+    user_intents: list[str] | None
+    strategy: str | None
+    confidence: float | None
+    reason: str
+
+
+class IntentIn(BaseModel):
+    intents: list[Intent] = []
+    skip: bool = False
+
+
+class BuildIndexIn(BaseModel):
+    index: Literal["bm25", "graph", "bm25+graph"]
+
+
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def upload(
-    file: UploadFile, user: UserDep, session: SessionDep, background: BackgroundTasks
+    file: UploadFile,
+    user: UserDep,
+    session: SessionDep,
+    background: BackgroundTasks,
+    intents: Annotated[list[Intent] | None, Form()] = None,
 ) -> UploadOut:
-    """Validate and save the file, then index it in the background (202 = accepted)."""
+    """Validate and save the file, then analyze it in the background (202 = accepted).
+
+    Send `intents` with the upload to skip the intent question (FR14).
+    """
     content = await file.read()
     filename = file.filename or "upload"
     try:
@@ -67,7 +111,7 @@ async def upload(
     )
     session.add(document)
     session.commit()  # the background job reads it from a separate session
-    background.add_task(jobs.index_document, document.id)
+    background.add_task(jobs.analyze_document, document.id, intents)
     return UploadOut(document_id=document.id)
 
 
@@ -86,11 +130,76 @@ def get_document(document_id: str, user: UserDep, session: SessionDep) -> Docume
     return DocumentOut.of(owned_document(session, user, document_id))
 
 
+@router.get("/{document_id}/analysis")
+def get_analysis(document_id: str, user: UserDep, session: SessionDep) -> AnalysisOut:
+    """Scan signals, suggested intents, and (once decided) the strategy and reason."""
+    document = owned_document(session, user, document_id)
+    analysis = session.get(db.DocumentAnalysis, document_id)
+    if analysis is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Analysis not ready ({document.status})")
+    suggested = set(analysis.suggested_intents)
+    return AnalysisOut(
+        status=document.status,
+        profile=DocumentProfile.model_validate(analysis.raw_features["profile"]),
+        intent_options=[
+            IntentOption(id=intent, label=label, suggested=intent in suggested)
+            for intent, label in INTENT_LABELS.items()
+        ],
+        suggested_intents=analysis.suggested_intents,
+        user_intents=analysis.user_intents,
+        strategy=analysis.recommended_strategy or None,
+        confidence=analysis.confidence if analysis.recommended_strategy else None,
+        reason=analysis.reason,
+    )
+
+
+@router.post("/{document_id}/intent", status_code=status.HTTP_202_ACCEPTED)
+def set_intent(
+    document_id: str,
+    body: IntentIn,
+    user: UserDep,
+    session: SessionDep,
+    background: BackgroundTasks,
+) -> DocumentOut:
+    """The uploader's answer (or skip); runs the decision and indexing in the background."""
+    document = owned_document(session, user, document_id)
+    if document.status != "awaiting_intent":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Document is {document.status}")
+    document.status, document.stage = "indexing", "Deciding strategy"
+    session.commit()
+    intents = None if body.skip or not body.intents else body.intents
+    background.add_task(jobs.apply_intent, document.id, intents)
+    return DocumentOut.of(document)
+
+
+@router.post("/{document_id}/build-index", status_code=status.HTTP_202_ACCEPTED)
+def build_index(
+    document_id: str,
+    body: BuildIndexIn,
+    user: UserDep,
+    session: SessionDep,
+    background: BackgroundTasks,
+) -> DocumentOut:
+    """Add the keyword index and/or the graph, usually from a recommendation (FR20)."""
+    document = owned_document(session, user, document_id)
+    if document.status != "ready":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Document is {document.status}")
+    if "graph" in body.index and services.graph_store() is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Neo4j is not running")
+    document.status, document.stage = "indexing", f"Building {body.index}"
+    session.commit()
+    background.add_task(jobs.build_index, document.id, body.index)
+    return DocumentOut.of(document)
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: str, user: UserDep, session: SessionDep) -> Response:
-    """Remove the document from every store: vectors, chunks, file, and row."""
+    """Remove the document from every store: vectors, keywords, graph, chunks, file, row."""
     document = owned_document(session, user, document_id)
     services.vector_store().delete_document(document.id)
+    services.bm25_store().remove(document.id)
+    if document.graph_status != "none" and (graph := services.graph_store()) is not None:
+        graph.delete_document(document.id)
     files.delete_upload(document.file_path)
     session.delete(document)  # chunks and analysis rows cascade
     return Response(status_code=status.HTTP_204_NO_CONTENT)
