@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     # Uploads
     max_upload_mb: int = 50
 
+    # Graph (Neo4j)
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: SecretStr = SecretStr("")
+    graph_max_hops: int = 2
+    graph_max_paths: int = 50
+    extraction_batch_chars: int = 12_000  # chunk text per extraction LLM call
+    extraction_max_tokens: int = 12_000
+    extraction_min_confidence: float = 0.5  # drop relationships the LLM is unsure of
+
     # Local models
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     # BGE models search better when questions (not chunks) carry this instruction

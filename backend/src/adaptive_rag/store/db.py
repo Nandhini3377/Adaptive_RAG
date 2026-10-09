@@ -253,3 +253,12 @@ def load_chunks(session: Session, document_id: str) -> list[Chunk]:
         .order_by(ChunkRow.position)
     )
     return [row.to_chunk() for row in rows]
+
+
+def load_chunks_by_ids(session: Session, chunk_ids: list[str], owner_id: str) -> list[Chunk]:
+    """Chunks by ID, in the order given; other owners' chunks are never returned."""
+    if not chunk_ids:
+        return []
+    rows = session.query(ChunkRow).filter(ChunkRow.id.in_(chunk_ids), ChunkRow.owner_id == owner_id)
+    by_id = {row.id: row.to_chunk() for row in rows}
+    return [by_id[chunk_id] for chunk_id in chunk_ids if chunk_id in by_id]

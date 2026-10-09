@@ -120,3 +120,31 @@ class StrategyDecision(BaseModel):
     reason: str
     graph_candidate: bool = False  # many relationships, but the graph was not built
     warning: str = ""
+
+
+class GraphEntity(BaseModel):
+    """A node: a named thing found in the document."""
+
+    key: str  # normalized name, unique within a document
+    name: str
+    type: str = "thing"
+
+
+class GraphRelation(BaseModel):
+    """An edge, with the chunk that states it, so answers can cite the source."""
+
+    source: str  # entity key
+    relation: str  # UPPER_SNAKE_CASE, e.g. DEPENDS_ON
+    target: str  # entity key
+    chunk_id: str
+    confidence: float = 1.0
+
+
+class GraphExtraction(BaseModel):
+    """Everything extracted from one document."""
+
+    entities: list[GraphEntity] = []
+    relations: list[GraphRelation] = []
+    mentions: dict[str, list[str]] = {}  # chunk id -> entity keys it mentions
+    tokens: int = 0
+    cost_inr: float = 0.0
