@@ -74,3 +74,49 @@ class RetrievalResult(BaseModel):
 
     hits: list[SearchHit]
     graph_paths: list[GraphPath] = []
+
+
+Intent = Literal["facts", "exact_terms", "connections", "compare"]
+Strategy = Literal["vector", "hybrid", "graph_hybrid"]
+
+
+class Section(BaseModel):
+    """All elements under one heading, joined; the unit the sampler picks from."""
+
+    id: str  # position in the document, as text ("0", "1", ...)
+    title: str
+    text: str
+    relationship_phrases: int = 0
+
+
+class DocumentProfile(BaseModel):
+    """Signals from the quick scan and the sampled LLM pass (PRD FR8-FR11)."""
+
+    page_count: int = 0
+    section_count: int = 0
+    heading_count: int = 0
+    table_count: int = 0
+    list_count: int = 0
+    link_count: int = 0
+    word_count: int = 0
+    cross_ref_rate: float = 0.0  # per 1,000 words
+    relationship_phrase_rate: float = 0.0  # per 1,000 words
+    identifier_density: float = 0.0  # per 1,000 words
+    table_share: float = 0.0  # 0-1, share of words inside tables
+    sampled_section_ids: list[str] = []
+    relationship_density: float = 0.0  # relationships per entity in the sample
+    entity_repetition: float = 0.0  # 0-1, sampled entities found in 3+ sections
+    analysis_tokens: int = 0
+    analysis_cost_inr: float = 0.0
+    sample_entities: list[str] = []
+    sample_relationships: list[str] = []
+
+
+class StrategyDecision(BaseModel):
+    """The chosen strategy, how sure we are, and why in plain words (FR15)."""
+
+    strategy: Strategy
+    confidence: float
+    reason: str
+    graph_candidate: bool = False  # many relationships, but the graph was not built
+    warning: str = ""

@@ -72,6 +72,20 @@ class Settings(BaseSettings):
     # Chunking: ~1500 characters is ~300-400 tokens, inside the embedder's 512 limit
     chunk_max_chars: int = 1500
 
+    # Document analysis (PRD 7.2). Starting values; tuned against the eval set.
+    sample_min_sections: int = 5
+    sample_max_sections: int = 10
+    sample_max_chars: int = 24_000  # cap on text sent to the LLM for the sample
+    sample_max_tokens: int = 8000
+    many_relationships_density: float = 1.5  # relationships per entity in the sample
+    many_relationships_cross_ref_rate: float = 2.0  # per 1,000 words
+    many_relationships_phrase_rate: float = 3.0  # per 1,000 words
+    small_plain_max_pages: int = 10
+    small_plain_max_identifier_density: float = 1.0  # per 1,000 words
+    small_plain_max_table_share: float = 0.05
+    exact_terms_identifier_density: float = 3.0  # suggest the exact_terms intent above this
+    words_per_page: int = 500  # page estimate for formats without pages
+
     # Retrieval
     top_k: int = 5  # chunks given to the LLM
     candidate_k: int = 20  # chunks each retriever returns before fusion and reranking
