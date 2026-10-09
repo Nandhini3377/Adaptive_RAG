@@ -57,7 +57,10 @@ class VectorStore:
             query_filter=_owner_filter(owner_id, document_ids),
             limit=top_k or settings.top_k,
         )
-        return [SearchHit(chunk=Chunk(**point.payload), score=point.score) for point in result.points]
+        return [
+            SearchHit(chunk=Chunk(**point.payload), score=point.score)
+            for point in result.points
+        ]
 
     def delete_document(self, document_id: str) -> None:
         """Remove every chunk of one document."""
@@ -67,6 +70,14 @@ class VectorStore:
                 filter=models.Filter(must=[_match("document_id", document_id)])
             ),
         )
+
+    def count(self, owner_id: str) -> int:
+        """Count the number of chunks belonging to an owner."""
+        result = self._client.count(
+            collection_name=COLLECTION,
+            count_filter=models.Filter(must=[_match("owner_id", owner_id)]),
+        )
+        return result.count
 
 
 def _match(field: str, value: str) -> models.FieldCondition:
@@ -79,6 +90,8 @@ def _owner_filter(owner_id: str, document_ids: list[str] | None) -> models.Filte
     conditions: list[models.Condition] = [_match("owner_id", owner_id)]
     if document_ids:
         conditions.append(
-            models.FieldCondition(key="document_id", match=models.MatchAny(any=document_ids))
+            models.FieldCondition(
+                key="document_id", match=models.MatchAny(any=document_ids)
+            )
         )
     return models.Filter(must=conditions)

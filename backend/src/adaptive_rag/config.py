@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     # Local models
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     # BGE models search better when questions (not chunks) carry this instruction
-    embedding_query_prefix: str = "Represent this sentence for searching relevant passages: "
+    embedding_query_prefix: str = (
+        "Represent this sentence for searching relevant passages: "
+    )
     reranker_model: str = "BAAI/bge-reranker-base"
 
     # Storage
