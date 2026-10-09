@@ -45,8 +45,9 @@ _PROMPT = """Extract named entities and the relationships between them from thes
 - Entities: specific named things (services, systems, teams, people, products, policies, codes).
   Not generic words like "user" or "data".
 - Relationships: only ones the text states, e.g. "Payments depends on Auth" ->
-  {"source": "Payments", "relation": "DEPENDS_ON", "target": "Auth"}.
+  {{"source": "Payments", "relation": "DEPENDS_ON", "target": "Auth"}}.
 - Use UPPER_SNAKE_CASE relation names.
+- List at most {limit} entities and {limit} relationships: the most important ones.
 
 Sections:
 """
@@ -78,7 +79,12 @@ def analyze_sample(sections: list[Section], profile: DocumentProfile, llm: LLM) 
     if not sample:
         return profile
     response = llm.complete_json(
-        [{"role": "user", "content": _PROMPT + _sample_text(sample)}],
+        [
+            {
+                "role": "user",
+                "content": _PROMPT.format(limit=settings.sample_max_items) + _sample_text(sample),
+            }
+        ],
         _EXTRACTION_SCHEMA,
         name="sample_extraction",
         max_tokens=settings.sample_max_tokens,

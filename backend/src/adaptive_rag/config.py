@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     graph_max_hops: int = 2
     graph_max_paths: int = 50
     extraction_batch_chars: int = 12_000  # chunk text per extraction LLM call
-    extraction_max_tokens: int = 12_000
+    extraction_max_tokens: int = 16_000
     extraction_min_confidence: float = 0.5  # drop relationships the LLM is unsure of
 
     # Local models
@@ -86,7 +86,8 @@ class Settings(BaseSettings):
     sample_min_sections: int = 5
     sample_max_sections: int = 10
     sample_max_chars: int = 24_000  # cap on text sent to the LLM for the sample
-    sample_max_tokens: int = 8000
+    sample_max_tokens: int = 16_000  # reasoning + JSON; 8K ran out on a dense spec
+    sample_max_items: int = 40  # entities/relationships asked for: enough to estimate density
     many_relationships_density: float = 1.5  # relationships per entity in the sample
     many_relationships_cross_ref_rate: float = 2.0  # per 1,000 words
     many_relationships_phrase_rate: float = 3.0  # per 1,000 words

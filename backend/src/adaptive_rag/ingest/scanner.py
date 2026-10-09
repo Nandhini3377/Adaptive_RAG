@@ -36,7 +36,10 @@ IDENTIFIER = re.compile(
     r"|\b[A-Z]{2,6}\d*\b"  # acronyms: API, SSO, SOC2
 )
 # Capitalised words that are not identifiers
-_NOT_IDENTIFIERS = frozenset({"I", "A", "OK", "AM", "PM", "US", "UK", "EU", "TODO", "FAQ"})
+_NOT_IDENTIFIERS = frozenset(
+    {"I", "A", "OK", "AM", "PM", "US", "UK", "EU", "TODO", "FAQ", "AND", "OR", "NOT"}
+    | {"KB", "MB", "GB", "TB"}  # units
+)
 
 URL = re.compile(r"https?://\S+")
 _WORD = re.compile(r"\b\w+\b")
