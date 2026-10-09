@@ -149,4 +149,76 @@ Rules (PRD FR17):
 
 ---
 
-*More sections are added as each phase is built.*
+## 10. Document analysis — `ingest/scanner.py`, `sampler.py`, `intent.py`, `selector.py`, `jobs.py`
+
+**The differentiator.** Decide how to index a document *without* chunking/embedding/extracting all of it.
+
+1. **Quick scan (no LLM, whole document, milliseconds):** counts pages, sections, tables, lists, links; regex rates per 1,000 words for cross-references ("see Section 4.2"), relationship phrases ("depends on", "owned by"), and identifiers (AUTH-403, v2.1.0, snake_case, acronyms); share of words in tables.
+2. **LLM sample:** 5–10 sections — the most relationship-heavy half plus evenly spread ones — sent in **one** call asking for ≤ 40 entities and relationships. Gives *relationship density* (relationships per entity) and *entity repetition* (share of sampled entities appearing in 3+ sections, by string match over the full text).
+3. **Intent:** "What will you mostly ask?" — pre-filled from the scan; optional (skip = scan decides).
+4. **Decision table** (PRD FR15) → vector / hybrid / graph_hybrid, with a **confidence** (clear scan signal + agreeing intent = higher) and a **plain-language reason with the numbers**. "Many relationships but you only want facts" → hybrid, marked *graph candidate*.
+5. **State machine** in SQLite: `scanning → awaiting_intent → indexing → ready` (or `failed` with the error). The UI polls it. Every step is wrapped so a crash marks the document failed instead of leaving it stuck.
+
+**What we measured:** on the real PRD, the first sample call **ran out of tokens** (8K cap) — a dense spec produces a long JSON list *plus* reasoning. Fix: 16K cap and "at most 40 items". If the LLM still fails, the scan alone decides (graceful degradation), and the reason says so.
+
+**Q: Why not just build every index for every document?** Cost and time. Graph extraction for a 100-page document is ~100K tokens; the sample is a fraction. The Evaluation Lab reports the *analysis cost ratio*. And any index can still be added later with one click.
+
+**Q: How did you pick the thresholds?** PRD starting values in config; they're meant to be tuned against the eval set, and the lab reports *strategy accuracy* (decision vs best measured strategy) to show whether they're right.
+
+---
+
+## 11. Knowledge graph — `ingest/extractor.py`, `store/graph_store.py`, `retrieval/graph*.py`
+
+- Extraction runs only for graph strategies. Chunks go to the LLM in ~12K-character batches; JSON schema returns entities and relationships, each relationship naming the **chunk number** that states it and a **confidence**.
+- **Entity normalization:** `entity_key()` lowercases and strips articles/punctuation, so "The Auth-Service" and "auth service" become one node. Later batches are given the entity names already found and told to reuse them.
+- Low-confidence (< 0.5) relationships, self-loops, and invalid chunk numbers are dropped; duplicate facts keep the highest confidence.
+- Neo4j model: `(:Entity)-[:RELATES {type, chunk_id, confidence}]->(:Entity)` and `(:Chunk)-[:MENTIONS]->(:Entity)`. Entity ids are `document_id:key`, so documents never share nodes and deletes are clean. **All Cypher lives in `graph_store.py`.**
+- **Graph retrieval:** link entities whose names appear in the question → traverse up to 2 hops in either direction → the chunks stating those edges (shortest paths first), then chunks mentioning the entities. Paths keep their real edge direction for the UI ("Auth Service ←DEPENDS_ON— Payments").
+- **Graph + Hybrid:** graph hits and hybrid hits fused with RRF.
+
+**Honest status:** the Neo4j code is unit-tested offline only where possible; the two Neo4j integration tests skip until Neo4j runs. Verify them first when you set up Docker.
+
+**Q: Why store `chunk_id` on every edge?** So a graph answer can cite the source sentence. A graph fact without its source text can't be checked.
+
+---
+
+## 12. Query intelligence and self-correction — `query/`
+
+- **Classifier (rules first):** regex rules for comparison, multi-hop (two different relationship verbs, e.g. "teams that **own** services **affected** by…"), relationship, aggregation, keyword (IDs or quoted terms), fact lookup. Only when no rule is confident is the LLM asked. On the eval set, rules cover ≥ 80% of questions — free and instant.
+- **Router:** ideal mode per type (fact/semantic → vector, keyword → hybrid, relationship/multi-hop → graph, comparison/aggregation → graph_hybrid), but **only modes whose indexes exist**. Otherwise it uses the strongest available mode and attaches a **recommendation** ("Build the graph for this document?"). Nothing is built without the user.
+- **Relevance gate (no LLM):** score = average of the top-1 reranker score and the mean of the top 3 (0–1). Below the threshold → **rewrite** the query (one LLM call that avoids earlier attempts) → retrieve again, up to 2 retries → otherwise refuse with the standard insufficient-evidence message.
+- **Grounding check:** one LLM call splits the answer into claims and checks each against its cited chunk. Unsupported claims → regenerate once with a stricter prompt → still unsupported → refuse.
+- **LangGraph** state machine wires it: classify → route → retrieve → rerank → evaluate → (rewrite ↺) → generate → ground → (regenerate ↺) → done/refuse. Each node is timed; a `MeteredLLM` wrapper adds up tokens and cost across every call in one query.
+
+**Q: Why rerank against the original question, not the rewrite?** The rewrite is only a better search query; the answer still has to address what the user asked.
+
+**Q: Why LangGraph instead of plain function calls?** The flow has loops (rewrite, regenerate) and conditional exits. A state machine makes every path explicit and testable — the tests cover the happy path, rewrite-then-success, retries exhausted, regenerate-then-pass, and regenerate-then-refuse.
+
+**Q: What's the threshold?** 0.15 to start. We measured reranker scores as low as 0.23 for a *correct* top chunk, so a high threshold would refuse good answers. It must be calibrated with the Evaluation Lab.
+
+---
+
+## 13. Evaluation Lab — `data/demo_spec.yaml`, `scripts/generate_demo_docs.py`, `eval/`
+
+- **Corpus:** one YAML spec of a fictional company (Nimbus Labs: 15 services, dependencies, 7 teams, policies, error codes, incidents) → 4 documents with deliberately different profiles and formats (handbook .md, security .html, architecture .docx, runbook .md) and **60 questions** in the PRD mix (12 fact, 8 keyword, 8 semantic, 12 relationship, 10 multi-hop, 5 comparison, 5 unanswerable).
+- Every fact sentence comes from one template function used by both the documents and the questions, so each question's **gold evidence** is an exact sentence. A test checks every gold sentence really sits inside one chunk — otherwise the metrics would measure nothing.
+- **Metrics (no LLM):** Hit@5, Recall@5, MRR against gold sentences; retrieval latency p50/p95. **Full mode** adds answer correctness (all gold keywords present), faithfulness (grounding score), refusal accuracy on unanswerable questions, false refusals, end-to-end latency, tokens, and ₹ per query.
+- **Router accuracy:** the router's pick is among the best-scoring modes for that question. Scored by reusing each mode's results, so it costs nothing extra.
+- **Strategy accuracy:** each upload decision vs the *cheapest* strategy whose (router-oracle) recall is within 0.02 of the best.
+- **Rule coverage, analysis cost ratio, rewrite gain** are reported too. Output: `data/eval/results.md` + `results.json`, and charts in the UI.
+
+**Q: Isn't a generated corpus artificial?** Yes — that's the trade-off for exact gold answers with no labelling cost or licensing issues. The PRD plans one real public document as well, and the questions must still be **checked by hand** (that's your job before trusting the numbers).
+
+**Q: Why keyword matching for answer correctness instead of an LLM judge?** Deterministic, free, explainable. The cost is false negatives when the answer paraphrases (e.g. "twenty" vs "20").
+
+---
+
+## 14. Web dashboard — `web/`
+
+- Next.js 16 App Router, TypeScript strict, Tailwind 4, Recharts. All pages are client components talking to the FastAPI API through one typed client (`lib/api.ts`, types mirroring the backend models).
+- Background work is shown by **polling** status every 2–3 s (simple, no websockets needed at this scale).
+- Next 16 with Cache Components requires a `<Suspense>` boundary around client components that read the URL (`useParams`, `useSearchParams`, `usePathname`) — the build fails otherwise.
+- React 19's lint forbids `setState` directly in effects; data loads use `useEffectEvent` (`hooks/usePolling.ts`), and the auth guard reads localStorage with `useSyncExternalStore`.
+- Charts: one fixed colour per mode across every chart, a palette validated for colour-blind separation and contrast, a single y-axis, hover tooltips, and a table view under the charts (required because three light-mode colours are below 3:1 contrast).
+
+**Q: Where is the JWT stored and what's the risk?** localStorage — simple for a demo, but readable by any injected script (XSS). Production would use an httpOnly cookie.
