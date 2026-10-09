@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     sarvam_api_key: SecretStr = SecretStr("")
     sarvam_base_url: str = "https://api.sarvam.ai/v1"
     sarvam_model: str = "sarvam-105b"
+    llm_timeout_seconds: float = 120.0
+    llm_max_retries: int = 3
+    # Price in INR per million tokens (PRD Section 14); reasoning counts as output
+    llm_input_price_inr: float = 29.28
+    llm_output_price_inr: float = 73.20
 
     # Local models
     embedding_model: str = "BAAI/bge-small-en-v1.5"
@@ -33,6 +38,9 @@ class Settings(BaseSettings):
 
     # Storage
     data_dir: Path = PROJECT_ROOT / "data"
+
+    # Chunking: ~1500 characters is ~300-400 tokens, inside the embedder's 512 limit
+    chunk_max_chars: int = 1500
 
     # Retrieval
     top_k: int = 5

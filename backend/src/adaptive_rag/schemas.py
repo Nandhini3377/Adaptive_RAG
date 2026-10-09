@@ -4,11 +4,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+ElementType = Literal["heading", "paragraph", "list", "table"]
+
 
 class Element(BaseModel):
     """One typed piece of a parsed document: heading, paragraph, table, or list."""
 
-    type: Literal["list", "table", "heading", "paragraph"]
+    type: ElementType
     text: str
     page: int | None = None
     section: str = ""

@@ -8,9 +8,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "fastembed>=0.7.4",
+    "markdown-it-py>=4.2.0",
     "onnxruntime<1.24",
+    "openai>=3.26.1",
     "pydantic-settings>=2.15.0",
+    "pymupdf>=1.28.2",
+    "python-docx>=1.2.0",
     "qdrant-client>=1.19.1",
 ]
 
@@ -25,4 +30,11 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.10",
+]
+
+[tool.pytest.ini_options]
+markers = ["live: calls a real external API (costs credits)"]
+filterwarnings = [
+    # PyMuPDF's compiled bindings trigger this on import; harmless
+    "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
 ]
