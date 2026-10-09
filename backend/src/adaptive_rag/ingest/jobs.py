@@ -173,6 +173,16 @@ def _build_graph(document_id: str, owner_id: str, chunks: list[Chunk]) -> None:
     extraction = extract_graph(chunks, services.llm())
     graph.write_document(document_id, owner_id, extraction, {c.id: c.section for c in chunks})
     _set_graph_status(document_id, "ready")
+    with db.session_scope() as session:  # for the analysis-cost ratio in the Evaluation Lab
+        analysis = session.get(db.DocumentAnalysis, document_id)
+        if analysis is not None:
+            analysis.raw_features = {
+                **analysis.raw_features,
+                "extraction_tokens": extraction.tokens,
+                "extraction_cost_inr": extraction.cost_inr,
+                "graph_entities": len(extraction.entities),
+                "graph_relations": len(extraction.relations),
+            }
 
 
 def _set_graph_status(document_id: str, status: str) -> None:

@@ -44,7 +44,10 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-markers = ["live: calls a real external API (costs credits)"]
+markers = [
+    "live: calls a real external API (costs credits)",
+    "slow: indexes the demo corpus with real models (~2 min); skip with -m 'not slow'",
+]
 filterwarnings = [
     # PyMuPDF's compiled bindings trigger this on import; harmless
     "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",

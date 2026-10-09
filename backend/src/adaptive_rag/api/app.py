@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from adaptive_rag import services
-from adaptive_rag.api import routes_auth, routes_documents, routes_query
+from adaptive_rag.api import routes_auth, routes_documents, routes_eval, routes_query
 from adaptive_rag.config import settings
 from adaptive_rag.store import db
 
@@ -17,9 +17,13 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """On start: rebuild keyword indexes from SQLite (they live in memory)."""
+    """On start: rebuild keyword indexes (they live in memory) and clear stale eval runs."""
     with db.session_scope() as session:
         rebuilt = services.bm25_store().rebuild_from_db(session)
+        # Background work dies with the process; don't leave runs stuck as "running"
+        for run in session.query(db.EvalRun).filter(db.EvalRun.status == "running"):
+            run.status = "failed"
+            run.metrics = {"error": "Server restarted during the run"}
     log.info("Rebuilt %d BM25 indexes", rebuilt)
     yield
 
@@ -40,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_auth.router)
     app.include_router(routes_documents.router)
     app.include_router(routes_query.router)
+    app.include_router(routes_eval.router)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:
