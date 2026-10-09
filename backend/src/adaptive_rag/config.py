@@ -1,5 +1,6 @@
 """App settings, loaded from environment variables and the .env file."""
 
+import secrets
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -35,9 +36,14 @@ class Settings(BaseSettings):
     answer_max_tokens: int = 8000
 
     # Auth
-    jwt_secret: SecretStr = SecretStr("dev-only-change-me")
+    # Set JWT_SECRET in .env so logins survive restarts; if empty, a random
+    # secret is made at startup (safe, but everyone is logged out on restart)
+    jwt_secret: SecretStr = SecretStr("")
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24
+
+    # API
+    cors_origins: list[str] = ["http://localhost:3000"]
 
     # Uploads
     max_upload_mb: int = 50
@@ -71,3 +77,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+if not settings.jwt_secret.get_secret_value():
+    settings.jwt_secret = SecretStr(secrets.token_urlsafe(32))
