@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     exact_terms_identifier_density: float = 3.0  # suggest the exact_terms intent above this
     words_per_page: int = 500  # page estimate for formats without pages
 
+    # Query intelligence and self-correction (PRD 7.5, 7.6)
+    classifier_llm_fallback: bool = True  # ask the LLM only when rules are unsure
+    classifier_max_tokens: int = 4000
+    relevance_threshold: float = 0.15  # reranker-based relevance below this -> rewrite
+    max_retries: int = 2  # query rewrites before giving up
+    rewrite_max_tokens: int = 4000
+    grounding_max_tokens: int = 6000
+    grounding_enabled: bool = True
+
     # Retrieval
     top_k: int = 5  # chunks given to the LLM
     candidate_k: int = 20  # chunks each retriever returns before fusion and reranking

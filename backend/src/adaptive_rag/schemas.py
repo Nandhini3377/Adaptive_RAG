@@ -148,3 +148,33 @@ class GraphExtraction(BaseModel):
     mentions: dict[str, list[str]] = {}  # chunk id -> entity keys it mentions
     tokens: int = 0
     cost_inr: float = 0.0
+
+
+QueryType = Literal[
+    "fact_lookup", "semantic", "keyword", "relationship", "multi_hop", "comparison", "aggregation"
+]
+
+
+class Classification(BaseModel):
+    """What kind of question this is, and whether rules or the LLM decided."""
+
+    query_type: QueryType
+    entities: list[str] = []
+    confident: bool = True
+    source: Literal["rules", "llm"] = "rules"
+    reason: str = ""
+
+
+class Recommendation(BaseModel):
+    """'This question would work better with X. Build it?' (FR26)"""
+
+    better_mode: Mode
+    index_to_build: Literal["bm25", "graph", "bm25+graph"]
+    message: str
+
+
+class RoutingDecision(BaseModel):
+    ideal_mode: Mode
+    mode: Mode  # what actually runs: only indexes that exist are used
+    reason: str
+    recommendation: Recommendation | None = None
