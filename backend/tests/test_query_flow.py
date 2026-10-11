@@ -127,7 +127,18 @@ def test_grounding_scores_supported_claims():
     result = check_grounding(answer, llm)
     assert result.score == 0.5
     assert result.unsupported == ["Sick leave is 30 days"]
-    assert not result.passed
+    assert result.passed  # half supported: shown, with the doubtful claim flagged
+
+    llm.data["claims"].append({"claim": "Leave resets in March", "supported": False})
+    assert not check_grounding(answer, llm).passed  # 1 of 3: mostly unsupported
+
+
+def test_answer_without_citations_is_not_grounded():
+    """Nothing cited means nothing can be checked, and no LLM call is spent finding out."""
+    llm = FakeLLM()
+    result = check_grounding(Answer(text="Leave is 20 days."), llm)
+    assert result.score == 0.0 and not result.passed
+    assert llm.calls == []
 
 
 # ----------------------------------------------------------- whole pipeline
@@ -218,14 +229,52 @@ def test_model_finding_no_answer_rewrites_then_answers():
     assert state["refused_reason"] == ""
 
 
+def test_a_repeated_rewrite_stops_the_retries():
+    """Searching the same words again would find the same chunks, so it stops early."""
+    retriever = FixedRetriever("vector", GOOD)
+    llm = scripted_llm(["NO_ANSWER", "NO_ANSWER"], [])  # the rewriter always says the same
+    state, meter = run(QueryPipeline({"vector": retriever}, llm, keep_order))
+    assert retriever.queries == ["How many leave days?", "annual leave entitlement days"]
+    assert state["rewrites"] == ["annual leave entitlement days"]
+    assert state["answer"].text == INSUFFICIENT_EVIDENCE
+    assert meter.calls == 4  # 2 answers + 2 rewrites, not a third search
+
+
 def test_model_never_finds_an_answer_so_it_refuses_after_max_retries():
     retriever = FixedRetriever("vector", GOOD)
-    llm = scripted_llm(["NO_ANSWER", "NO_ANSWER", "NO_ANSWER"], [])
+    rewrites = iter(["annual leave entitlement", "paid time off allowance"])
+
+    def data(messages):
+        return {"query": next(rewrites)} if "Rewrite it" in messages[0]["content"] else {}
+
+    llm = FakeLLM(reply="NO_ANSWER", data=data)
     state, _ = run(QueryPipeline({"vector": retriever}, llm, keep_order))
-    assert len(retriever.queries) == 3  # original + 2 rewrites
+    assert len(retriever.queries) == 3  # original + 2 different rewrites
     assert state["answer"].text == INSUFFICIENT_EVIDENCE
     assert "does not contain the answer" in state["refused_reason"]
     assert state["grounding_score"] is None  # nothing to check on a refusal
+
+
+def test_one_doubtful_claim_does_not_discard_a_mostly_supported_answer():
+    """The checker is noisy, so a single flagged claim is reported, not fatal."""
+
+    def data(messages):
+        if "Check an answer" in messages[0]["content"]:
+            return {
+                "claims": [
+                    {"claim": "Sick leave is 10 days", "supported": True},
+                    {"claim": "12 is more than 10", "supported": True},
+                    {"claim": "12 days is not acceptable", "supported": False},
+                ]
+            }
+        return {"query_type": "semantic"}
+
+    llm = FakeLLM("No, sick leave is 10 days [1].", data=data)
+    state, _ = run(QueryPipeline({"vector": FixedRetriever("vector", GOOD)}, llm, keep_order))
+    assert state["answer"].text == "No, sick leave is 10 days [1]."
+    assert state["regenerated"] is False
+    assert state["grounding_score"] == pytest.approx(0.667, abs=0.001)
+    assert state["unsupported_claims"] == ["12 days is not acceptable"]
 
 
 def test_failed_grounding_regenerates_once_in_strict_mode():

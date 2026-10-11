@@ -3,7 +3,7 @@
 import re
 
 from adaptive_rag.config import settings
-from adaptive_rag.llm.base import LLM, Message
+from adaptive_rag.llm.base import LLM, LLMTruncatedError, Message
 from adaptive_rag.schemas import Answer, Citation, SearchHit
 
 INSUFFICIENT_EVIDENCE = (
@@ -15,14 +15,24 @@ _NO_ANSWER_TOKEN = "NO_ANSWER"
 _SYSTEM_PROMPT = f"""You answer questions about the user's documents.
 Rules:
 - Use ONLY the numbered evidence below. Do not use outside knowledge.
-- After every sentence that states a fact, cite its evidence like [1] or [1][3].
-- If the evidence does not contain the answer, reply with exactly: {_NO_ANSWER_TOKEN}
-- Start with the answer itself. Do not describe your steps or restate the question.
-- Be concise. Keep table values exactly as written."""
+- Write full sentences, and end each factual sentence with its citation, like [1] or [1][3].
+- For a plain question, give the fact in one or two sentences.
+- When the user asks whether something in their own situation is allowed or needed,
+  write in this order (the verdict comes LAST, after you have compared):
+  1. The rule, limit, or number from the evidence, with its citation.
+  2. The comparison: the user's number against that limit.
+  3. The verdict: "So yes, ..." when it is at or below the limit, "So no, ..." when above.
+- A limit only applies to the period the evidence names. A yearly allowance sets no
+  limit for a single month: give the yearly figure and say no monthly limit is stated.
+- Reply with exactly {_NO_ANSWER_TOKEN} only when the evidence has no fact or rule about
+  what is asked.
+- Do not restate the question, repeat these rules, or add remarks about what else the
+  documents do not cover. Keep table values exactly as written."""
 
 _STRICT_SUFFIX = """
 - STRICT MODE: a previous answer made claims the evidence did not support.
-  Only state what a cited chunk says word for word or nearly so."""
+  State only what a cited chunk says, or what follows directly from applying its
+  stated rule or number. Leave out everything else."""
 
 # Matches [1], [12], and lists like [1, 3]
 _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
@@ -45,11 +55,15 @@ def generate_answer(question: str, hits: list[SearchHit], llm: LLM, strict: bool
     if not hits:
         return Answer(text=INSUFFICIENT_EVIDENCE, insufficient_evidence=True)
 
-    response = llm.complete(
-        build_messages(question, hits, strict),
-        max_tokens=settings.answer_max_tokens,
-        reasoning_effort=settings.answer_reasoning_effort,
-    )
+    messages = build_messages(question, hits, strict)
+    options = {
+        "max_tokens": settings.answer_max_tokens,
+        "reasoning_effort": settings.answer_reasoning_effort,
+    }
+    try:
+        response = llm.complete(messages, **options)
+    except LLMTruncatedError:  # a rare runaway reply; a second try is usually normal
+        response = llm.complete(messages, **options)
     usage = {
         "input_tokens": response.input_tokens,
         "output_tokens": response.output_tokens,

@@ -43,8 +43,9 @@ class Settings(BaseSettings):
     grounding_reasoning_effort: Literal["low", "medium", "high"] | None = None
     # Reuse saved answers for identical calls (dev and eval cost ~nothing)
     llm_cache_enabled: bool = True
-    # Sarvam reasons for ~1-4K tokens before answering (measured), rarely more
-    answer_max_tokens: int = 8000
+    # Caps assume reasoning is off (answers are a few hundred tokens). They stop a rare
+    # runaway reply early; raise them (8K+) before turning reasoning on for answers.
+    answer_max_tokens: int = 1000
 
     # Auth
     # Set JWT_SECRET in .env so logins survive restarts; if empty, a random
@@ -115,11 +116,15 @@ class Settings(BaseSettings):
 
     # Query intelligence and self-correction (PRD 7.5, 7.6)
     classifier_llm_fallback: bool = True  # ask the LLM only when rules are unsure
-    classifier_max_tokens: int = 4000
+    classifier_max_tokens: int = 200
     max_retries: int = 2  # query rewrites when the model finds no answer, before giving up
-    rewrite_max_tokens: int = 4000
-    grounding_max_tokens: int = 6000
+    rewrite_max_tokens: int = 300
+    grounding_max_tokens: int = 1000
     grounding_enabled: bool = True
+    # An answer is rejected only when fewer than this share of its claims are supported.
+    # The checker is itself an LLM and is noisy (it flagged correct answers in repeat
+    # runs), so one doubtful claim must not discard an otherwise supported answer.
+    grounding_threshold: float = 0.5
 
     # Retrieval
     top_k: int = 5  # chunks given to the LLM

@@ -63,6 +63,7 @@ class QueryState(TypedDict, total=False):
     search_query: str
     rewrites: list[str]
     attempt: int
+    rewrite_repeated: bool
     # evidence
     candidates: list[SearchHit]
     reranked: list[SearchHit]
@@ -72,6 +73,7 @@ class QueryState(TypedDict, total=False):
     # output
     answer: Answer
     grounding_score: float | None
+    grounding_passed: bool
     unsupported_claims: list[str]
     regenerated: bool
     refused_reason: str
@@ -167,11 +169,18 @@ class QueryPipeline:
 
         def rewrite_step(state: QueryState) -> dict[str, Any]:
             rewritten = rewrite_query(state["question"], state["rewrites"], llm)
+            tried = {state["question"].lower(), *(r.lower() for r in state["rewrites"])}
+            if rewritten.lower() in tried:  # nothing new to search for: stop retrying
+                return {"attempt": settings.max_retries, "rewrite_repeated": True}
             return {
                 "search_query": rewritten,
                 "rewrites": [*state["rewrites"], rewritten],
                 "attempt": state["attempt"] + 1,
+                "rewrite_repeated": False,
             }
+
+        def after_rewrite(state: QueryState) -> str:
+            return "done" if state.get("rewrite_repeated") else "retrieve"
 
         def generate_step(state: QueryState) -> dict[str, Any]:
             answer = generate_answer(state["question"], state["reranked"], llm)
@@ -188,7 +197,11 @@ class QueryPipeline:
                 result = check_grounding(state["answer"], llm)
             except LLMError:  # the answer stands, shown as unchecked rather than lost
                 return {"grounding_score": None}
-            return {"grounding_score": result.score, "unsupported_claims": result.unsupported}
+            return {
+                "grounding_score": result.score,
+                "grounding_passed": result.passed,
+                "unsupported_claims": result.unsupported,
+            }
 
         def regenerate_step(state: QueryState) -> dict[str, Any]:
             answer = generate_answer(state["question"], state["reranked"], llm, strict=True)
@@ -207,7 +220,7 @@ class QueryPipeline:
             return "rewrite" if needs_retry(True, state["attempt"]) else "done"
 
         def after_ground(state: QueryState) -> str:
-            if not state["unsupported_claims"]:
+            if state.get("grounding_passed", True):  # unchecked answers are shown as such
                 return "done"
             return "refuse" if state["regenerated"] else "regenerate"
 
@@ -234,7 +247,7 @@ class QueryPipeline:
         graph.add_conditional_edges(
             "generate", after_generate, {"ground": "ground", "rewrite": "rewrite", "done": END}
         )
-        graph.add_edge("rewrite", "retrieve")
+        graph.add_conditional_edges("rewrite", after_rewrite, {"retrieve": "retrieve", "done": END})
         graph.add_conditional_edges(
             "ground", after_ground, {"done": END, "regenerate": "regenerate", "refuse": "refuse"}
         )

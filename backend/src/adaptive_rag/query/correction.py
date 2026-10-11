@@ -92,10 +92,13 @@ _GROUNDING_SCHEMA = {
     "additionalProperties": False,
 }
 
-_GROUNDING_PROMPT = """Check an answer against its cited evidence.
-Split the answer into factual claims. For each claim, decide if the evidence chunk it
-cites (by [number]) clearly supports it. A claim with no citation, or citing a chunk
-that does not say it, is NOT supported.
+_GROUNDING_PROMPT = """Check an answer against the evidence it cites.
+List the factual claims in the answer. A claim is supported when any evidence chunk
+states it, or when it follows directly from applying a rule, limit, or number that a
+chunk states (for example "12 sick days is not allowed" follows from "sick leave is
+10 days"). A claim is NOT supported when no chunk states or implies it.
+List at most 6 claims, each once. Do not list sentences that only say what the
+documents do not mention.
 
 Evidence:
 {evidence}
@@ -105,7 +108,7 @@ Answer:
 
 
 class GroundingResult:
-    """Share of claims supported by their citations, and which ones failed."""
+    """Share of claims the evidence supports, and which ones it does not."""
 
     def __init__(self, score: float, unsupported: list[str], tokens: int, cost_inr: float):
         self.score = score
@@ -115,13 +118,16 @@ class GroundingResult:
 
     @property
     def passed(self) -> bool:
-        return not self.unsupported
+        """Enough of the answer is supported to show it (see `grounding_threshold`)."""
+        return self.score >= settings.grounding_threshold
 
 
 def check_grounding(answer: Answer, llm: LLM) -> GroundingResult:
-    """One LLM call: is each claim supported by the chunk it cites? (FR33)"""
-    if answer.insufficient_evidence or not answer.citations:
-        return GroundingResult(1.0 if answer.insufficient_evidence else 0.0, [], 0, 0.0)
+    """One LLM call: what share of the answer's claims does its cited evidence support? (FR33)"""
+    if answer.insufficient_evidence:
+        return GroundingResult(1.0, [], 0, 0.0)
+    if not answer.citations:  # nothing cited, so nothing can be checked: not grounded
+        return GroundingResult(0.0, [answer.text], 0, 0.0)
     evidence = "\n\n".join(f"[{c.number}] {c.text}" for c in answer.citations)
     response = llm.complete_json(
         [

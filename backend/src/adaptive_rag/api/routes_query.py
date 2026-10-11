@@ -33,6 +33,7 @@ class Scores(BaseModel):
     relevance: float
     relevance_history: list[float]
     grounding: float | None
+    unsupported_claims: list[str] = []  # claims the checker could not find in the evidence
 
 
 class QueryOut(BaseModel):
@@ -133,6 +134,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
             relevance=state["relevance"],
             relevance_history=state["relevance_history"],
             grounding=state["grounding_score"],
+            unsupported_claims=state["unsupported_claims"],
         ),
         regenerated=state["regenerated"],
         refused_reason=state["refused_reason"],
