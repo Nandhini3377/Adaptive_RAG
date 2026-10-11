@@ -7,6 +7,7 @@ from adaptive_rag.ingest.parser import parse_markdown
 from adaptive_rag.ingest.sampler import analyze_sample, choose_sample, entity_repetition
 from adaptive_rag.ingest.scanner import group_sections, scan
 from adaptive_rag.ingest.selector import decide, is_small_plain
+from adaptive_rag.llm.base import LLMTruncatedError
 from adaptive_rag.schemas import DocumentProfile, Section
 from tests.conftest import FakeLLM
 
@@ -124,6 +125,35 @@ def test_sampled_llm_extraction_sets_density():
     assert profile.analysis_tokens == 120
     assert "Payments -DEPENDS_ON-> Auth" in profile.sample_relationships
     assert len(llm.calls) == 1  # one LLM call for the whole sample
+
+
+def test_cut_off_sample_is_retried_with_half_the_sections():
+    """A dense sample that does not fit is halved instead of abandoned."""
+
+    class FitsFiveSections(FakeLLM):
+        def complete_json(self, messages, schema, **kwargs):
+            if messages[0]["content"].count("\n## ") > 5:
+                self.calls.append(messages)
+                raise LLMTruncatedError("cut off")
+            return super().complete_json(messages, schema, **kwargs)
+
+    llm = FitsFiveSections(data={"entities": [{"name": "A", "type": "x"}], "relationships": []})
+    profile = analyze_sample(sections(40), DocumentProfile(), llm)
+    assert len(llm.calls) == 2  # 10 sections failed, 5 fitted
+    assert len(profile.sampled_section_ids) == 5
+    assert profile.sample_entities == ["A"]
+
+
+def test_sample_that_never_fits_raises_so_the_scan_decides():
+    class NeverFits(FakeLLM):
+        def complete_json(self, messages, schema, **kwargs):
+            self.calls.append(messages)
+            raise LLMTruncatedError("cut off")
+
+    llm = NeverFits()
+    with pytest.raises(LLMTruncatedError):
+        analyze_sample(sections(40), DocumentProfile(), llm)
+    assert len(llm.calls) == 3  # 10, 5, then 3 sections: bounded, not endless
 
 
 # ---------------------------------------------------------------- intents

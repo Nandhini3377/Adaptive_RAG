@@ -54,7 +54,11 @@ class Settings(BaseSettings):
     neo4j_password: SecretStr = SecretStr("")
     graph_max_hops: int = 2
     graph_max_paths: int = 50
-    extraction_batch_chars: int = 12_000  # chunk text per extraction LLM call
+    # Chunk text per extraction LLM call. Small on purpose: a dense 8K-character batch
+    # made the model reason past its token budget, and each failed call takes minutes
+    # and is billed. A batch that still does not fit is split in half and retried.
+    extraction_batch_chars: int = 2_500
+    extraction_parallel: int = 4  # extraction calls running at the same time
     extraction_max_tokens: int = 16_000
     extraction_min_confidence: float = 0.5  # drop relationships the LLM is unsure of
 
@@ -85,9 +89,10 @@ class Settings(BaseSettings):
     # Document analysis (PRD 7.2). Starting values; tuned against the eval set.
     sample_min_sections: int = 5
     sample_max_sections: int = 10
-    sample_max_chars: int = 24_000  # cap on text sent to the LLM for the sample
+    sample_max_chars: int = 10_000  # cap on text sent to the LLM for the sample
     sample_max_tokens: int = 16_000  # reasoning + JSON; 8K ran out on a dense spec
-    sample_max_items: int = 40  # entities/relationships asked for: enough to estimate density
+    sample_max_items: int = 25  # entities/relationships asked for: enough to estimate density
+    sample_shrink_retries: int = 2  # halve the sample this many times if the answer is cut off
     many_relationships_density: float = 1.5  # relationships per entity in the sample
     many_relationships_cross_ref_rate: float = 2.0  # per 1,000 words
     many_relationships_phrase_rate: float = 3.0  # per 1,000 words

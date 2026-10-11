@@ -11,7 +11,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from adaptive_rag.llm.base import LLMError
+from adaptive_rag.llm.base import LLMError, LLMTruncatedError
 from adaptive_rag.llm.sarvam import SarvamLLM
 
 
@@ -116,8 +116,23 @@ def test_running_out_of_tokens_retries_once_then_answers():
 def test_running_out_of_tokens_is_a_clear_error():
     """A reasoning model that spends the budget thinking returns nothing."""
     llm = SarvamLLM(http_client=fake_sarvam("", finish_reason="length"))
-    with pytest.raises(LLMError, match="Ran out of tokens"):
+    with pytest.raises(LLMTruncatedError, match="Ran out of tokens"):
         llm.complete([{"role": "user", "content": "hi"}], max_tokens=50)
+
+
+def test_half_written_answer_is_truncation_and_is_not_retried():
+    """A reply cut off mid-JSON must not be parsed, and re-asking would only be cut off again."""
+    seen = []
+    llm = SarvamLLM(http_client=fake_sarvam('{"entities": [{"name": "API', "length", seen=seen))
+    with pytest.raises(LLMTruncatedError, match="cut off"):
+        llm.complete_json([{"role": "user", "content": "?"}], {"type": "object"})
+    assert len(seen) == 1  # no second (billed) attempt with the same request
+
+
+def test_half_written_plain_answer_is_also_truncation():
+    llm = SarvamLLM(http_client=fake_sarvam("The answer is twen", "length"))
+    with pytest.raises(LLMTruncatedError):
+        llm.complete([{"role": "user", "content": "?"}])
 
 
 def test_api_errors_become_llm_errors():

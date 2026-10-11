@@ -7,6 +7,7 @@ Neo4j tests; otherwise they are skipped.
 import pytest
 
 from adaptive_rag.ingest.extractor import entity_key, extract_graph
+from adaptive_rag.llm.base import LLMTruncatedError
 from adaptive_rag.schemas import Chunk
 from tests.conftest import FakeLLM
 
@@ -123,11 +124,86 @@ def test_mentions_link_chunks_to_entities():
 
 def test_later_batches_are_told_known_entity_names(monkeypatch):
     monkeypatch.setattr("adaptive_rag.ingest.extractor.settings.extraction_batch_chars", 10)
+    monkeypatch.setattr("adaptive_rag.ingest.extractor.settings.extraction_parallel", 1)
     llm = FakeLLM(data=extraction_reply)
     extract_graph(CHUNKS, llm)
     assert len(llm.calls) == 2  # one batch per chunk
     assert "Entities already found" not in llm.calls[0][0]["content"]
     assert "Auth Service" in llm.calls[1][0]["content"].split("Chunks:")[0]
+
+
+class TruncatingLLM(FakeLLM):
+    """Runs out of tokens when a prompt holds more than `fits` chunks."""
+
+    def __init__(self, fits: int, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.fits = fits
+
+    def complete_json(self, messages, schema, **kwargs):
+        if f"[{self.fits + 1}]" in messages[0]["content"]:
+            self.calls.append(messages)
+            raise LLMTruncatedError("Ran out of tokens before answering")
+        return super().complete_json(messages, schema, **kwargs)
+
+
+def one_chunk_reply(messages):
+    """What the model finds in whichever single chunk it was given."""
+    if "Payments depends" in messages[0]["content"]:
+        return extraction_reply(messages)
+    return {
+        "entities": [{"name": "Orders", "type": "service"}],
+        "relationships": [
+            {
+                "source": "Orders",
+                "relation": "CALLS",
+                "target": "Payments",
+                "chunk": 1,
+                "confidence": 0.9,
+            }
+        ],
+    }
+
+
+def test_a_batch_that_runs_out_of_tokens_is_split_in_half():
+    llm = TruncatingLLM(fits=1, data=one_chunk_reply)
+    graph = extract_graph(CHUNKS, llm)
+    assert len(llm.calls) == 3  # the pair that failed, then each chunk alone
+    calls = next(r for r in graph.relations if r.relation == "CALLS")
+    assert calls.chunk_id == "c2"  # chunk [1] of the second half is c2, not c1
+    assert graph.tokens == 2 * 120  # usage from the two calls that answered
+
+
+def test_batches_run_in_waves_and_merge_in_document_order(monkeypatch):
+    """Two batches at a time: wave 2 knows wave 1's names, and results keep batch order."""
+    monkeypatch.setattr("adaptive_rag.ingest.extractor.settings.extraction_batch_chars", 10)
+    monkeypatch.setattr("adaptive_rag.ingest.extractor.settings.extraction_parallel", 2)
+    chunks = [
+        Chunk(id=f"c{n}", document_id="arch", owner_id="alice", text=f"Service{n} calls Hub.")
+        for n in range(1, 4)
+    ]
+
+    def reply(messages):
+        name = messages[0]["content"].split("[1] ")[1].split(" ")[0]  # "Service2"
+        return {
+            "entities": [{"name": name, "type": "service"}, {"name": "Hub", "type": "service"}],
+            "relationships": [
+                {"source": name, "relation": "CALLS", "target": "Hub", "chunk": 1, "confidence": 1}
+            ],
+        }
+
+    llm = FakeLLM(data=reply)
+    graph = extract_graph(chunks, llm)
+    assert [e.name for e in graph.entities] == ["Service1", "Hub", "Service2", "Service3"]
+    assert [r.chunk_id for r in graph.relations] == ["c1", "c2", "c3"]
+    third = next(c[0]["content"] for c in llm.calls if "[1] Service3" in c[0]["content"])
+    assert "Service1" in third.split("Chunks:")[0]  # learned from the first wave
+    first_wave = [c[0]["content"] for c in llm.calls if "[1] Service3" not in c[0]["content"]]
+    assert all("Entities already found" not in prompt for prompt in first_wave)
+
+
+def test_a_single_chunk_that_runs_out_of_tokens_still_fails():
+    with pytest.raises(LLMTruncatedError):
+        extract_graph(CHUNKS[:1], TruncatingLLM(fits=0))
 
 
 # ------------------------------------------------------------ Neo4j (Docker)

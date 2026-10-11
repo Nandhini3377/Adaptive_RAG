@@ -8,7 +8,14 @@ import openai
 from openai import OpenAI
 
 from adaptive_rag.config import settings
-from adaptive_rag.llm.base import LLM, LLMError, LLMResponse, Message, ReasoningEffort
+from adaptive_rag.llm.base import (
+    LLM,
+    LLMError,
+    LLMResponse,
+    LLMTruncatedError,
+    Message,
+    ReasoningEffort,
+)
 
 
 class SarvamLLM(LLM):
@@ -89,8 +96,7 @@ class SarvamLLM(LLM):
 
             choice = completion.choices[0]
             text = (choice.message.content or "").strip()
-            # Reasoning length varies a lot per call, so a retry usually answers.
-            if text or choice.finish_reason != "length":
+            if choice.finish_reason != "length":
                 return LLMResponse(
                     text=text,
                     model=completion.model or self.model_name,
@@ -99,8 +105,16 @@ class SarvamLLM(LLM):
                     reasoning_tokens=spent["reasoning"],
                     cost_inr=_cost_inr(spent["input"], spent["output"]),
                 )
+            if text:
+                # The answer itself was cut off mid-way: asking again would be cut off
+                # again (and billed again), so let the caller send a smaller request.
+                raise LLMTruncatedError(
+                    f"The answer was cut off at max_tokens={max_tokens}. Send a smaller request."
+                )
+            # No answer at all: reasoning used the whole budget. Reasoning length varies
+            # a lot per call, so one more try usually answers.
 
-        raise LLMError(
+        raise LLMTruncatedError(
             f"Ran out of tokens before answering (max_tokens={max_tokens}). "
             "Raise max_tokens or lower reasoning_effort."
         )

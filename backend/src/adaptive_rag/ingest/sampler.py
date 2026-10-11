@@ -8,7 +8,7 @@ import math
 import re
 
 from adaptive_rag.config import settings
-from adaptive_rag.llm.base import LLM
+from adaptive_rag.llm.base import LLM, LLMResponse, LLMTruncatedError
 from adaptive_rag.schemas import DocumentProfile, Section
 
 _EXTRACTION_SCHEMA = {
@@ -78,17 +78,14 @@ def analyze_sample(sections: list[Section], profile: DocumentProfile, llm: LLM) 
     sample = choose_sample(sections)
     if not sample:
         return profile
-    response = llm.complete_json(
-        [
-            {
-                "role": "user",
-                "content": _PROMPT.format(limit=settings.sample_max_items) + _sample_text(sample),
-            }
-        ],
-        _EXTRACTION_SCHEMA,
-        name="sample_extraction",
-        max_tokens=settings.sample_max_tokens,
-    )
+    response = _extract_sample(sample, llm)
+    for _shrink in range(settings.sample_shrink_retries):
+        if response is not None or len(sample) == 1:
+            break
+        sample = sample[::2]  # every other section: half the text, still spread out
+        response = _extract_sample(sample, llm)
+    if response is None:
+        raise LLMTruncatedError("The sample analysis did not fit in the token budget")
     data = response.data or {}
     entities = _unique([e["name"] for e in data.get("entities", [])])
     relationships = [
@@ -106,6 +103,20 @@ def analyze_sample(sections: list[Section], profile: DocumentProfile, llm: LLM) 
             "sample_relationships": relationships,
         }
     )
+
+
+def _extract_sample(sample: list[Section], llm: LLM) -> LLMResponse | None:
+    """One extraction call over the sample; None if the answer was cut off."""
+    prompt = _PROMPT.format(limit=settings.sample_max_items) + _sample_text(sample)
+    try:
+        return llm.complete_json(
+            [{"role": "user", "content": prompt}],
+            _EXTRACTION_SCHEMA,
+            name="sample_extraction",
+            max_tokens=settings.sample_max_tokens,
+        )
+    except LLMTruncatedError:
+        return None
 
 
 def entity_repetition(entities: list[str], sections: list[Section]) -> float:

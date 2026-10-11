@@ -5,9 +5,11 @@ LLM call per batch of chunks.
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 from adaptive_rag.config import settings
-from adaptive_rag.llm.base import LLM
+from adaptive_rag.llm.base import LLM, LLMTruncatedError
 from adaptive_rag.schemas import Chunk, GraphEntity, GraphExtraction, GraphRelation
 
 _SCHEMA = {
@@ -74,31 +76,70 @@ def entity_key(name: str) -> str:
 
 
 def extract_graph(chunks: list[Chunk], llm: LLM) -> GraphExtraction:
-    """Extract entities and relationships batch by batch, reusing known names."""
+    """Extract entities and relationships from small batches, several at a time.
+
+    Batches run in waves of `extraction_parallel`. Each wave is told the entity names
+    found by earlier waves, so later text reuses them ("the auth service" -> "Auth Service").
+    """
     result = GraphExtraction()
     entities: dict[str, GraphEntity] = {}
     relations: dict[tuple[str, str, str], GraphRelation] = {}  # dedupe repeated facts
 
-    for batch in _batches(chunks):
-        data, tokens, cost = _extract_batch(batch, list(entities.values()), llm)
-        result.tokens += tokens
-        result.cost_inr += cost
-        for item in data.get("entities", []):
-            key = entity_key(item["name"])
-            if key and key not in entities:
-                entities[key] = GraphEntity(key=key, name=item["name"].strip(), type=item["type"])
-        for item in data.get("relationships", []):
-            relation = _relation(item, batch, entities)
-            if relation is None:
-                continue
-            triple = (relation.source, relation.relation, relation.target)
-            if triple not in relations or relation.confidence > relations[triple].confidence:
-                relations[triple] = relation
+    batches = _batches(chunks)
+    wave_size = max(1, settings.extraction_parallel)
+    with ThreadPoolExecutor(max_workers=wave_size) as pool:
+        for start in range(0, len(batches), wave_size):
+            wave = batches[start : start + wave_size]
+            known = list(entities.values())  # a snapshot: workers never share state
+            # map() keeps batch order, so results merge the same way on every run
+            extract = partial(_extract_or_split, known=known, llm=llm)
+            for parts in pool.map(extract, wave):
+                for part, data, tokens, cost in parts:
+                    result.tokens += tokens
+                    result.cost_inr += cost
+                    _merge(data, part, entities, relations)
 
     result.entities = list(entities.values())
     result.relations = list(relations.values())
     result.mentions = _mentions(chunks, result.entities, result.relations)
     return result
+
+
+def _extract_or_split(
+    batch: list[Chunk], known: list[GraphEntity], llm: LLM
+) -> list[tuple[list[Chunk], dict, int, float]]:
+    """Extract one batch; if the answer does not fit in max_tokens, do each half."""
+    try:
+        data, tokens, cost = _extract_batch(batch, known, llm)
+    except LLMTruncatedError:
+        if len(batch) == 1:
+            raise
+        middle = len(batch) // 2
+        return [
+            *_extract_or_split(batch[:middle], known, llm),
+            *_extract_or_split(batch[middle:], known, llm),
+        ]
+    return [(batch, data, tokens, cost)]
+
+
+def _merge(
+    data: dict,
+    batch: list[Chunk],
+    entities: dict[str, GraphEntity],
+    relations: dict[tuple[str, str, str], GraphRelation],
+) -> None:
+    """Add one batch's entities and relationships, deduping against earlier ones."""
+    for item in data.get("entities", []):
+        key = entity_key(item["name"])
+        if key and key not in entities:
+            entities[key] = GraphEntity(key=key, name=item["name"].strip(), type=item["type"])
+    for item in data.get("relationships", []):
+        relation = _relation(item, batch, entities)
+        if relation is None:
+            continue
+        triple = (relation.source, relation.relation, relation.target)
+        if triple not in relations or relation.confidence > relations[triple].confidence:
+            relations[triple] = relation
 
 
 def _extract_batch(

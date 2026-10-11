@@ -17,6 +17,10 @@ class LLMError(Exception):
     """The LLM call failed or returned something unusable."""
 
 
+class LLMTruncatedError(LLMError):
+    """The model used up max_tokens before answering; a smaller request may fit."""
+
+
 class LLMResponse(BaseModel):
     """What came back from one LLM call, with its token usage and cost."""
 
