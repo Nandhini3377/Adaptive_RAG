@@ -106,9 +106,9 @@ def test_relevance_mixes_top1_and_top3_mean():
 
 
 def test_retry_budget():
-    assert needs_retry(0.01, attempt=0)
-    assert not needs_retry(0.01, attempt=2)  # MAX_RETRIES = 2
-    assert not needs_retry(0.9, attempt=0)
+    assert needs_retry(True, attempt=0)
+    assert not needs_retry(True, attempt=2)  # MAX_RETRIES = 2
+    assert not needs_retry(False, attempt=0)  # the model answered: nothing to retry
 
 
 def test_grounding_scores_supported_claims():
@@ -196,23 +196,36 @@ def test_happy_path_answers_with_citations_and_timings():
     assert meter.calls == 2  # generate + grounding (rules classified the question)
 
 
-def test_low_relevance_rewrites_then_answers():
-    retriever = FixedRetriever("vector", lambda q: GOOD if "entitlement" in q else BAD)
-    llm = scripted_llm(["Twenty days [1]."], [True])
+def test_low_reranker_score_does_not_block_the_answer():
+    """The reranker only sorts: a weak score still goes to the LLM, which can reason."""
+    retriever = FixedRetriever("vector", BAD)
+    llm = scripted_llm(["No, sick leave is 10 days [1]."], [True])
+    state, meter = run(QueryPipeline({"vector": retriever}, llm, keep_order))
+    assert state["answer"].text == "No, sick leave is 10 days [1]."
+    assert state["relevance"] < 0.05  # recorded for the Why panel, not used as a gate
+    assert state["rewrites"] == []
+    assert meter.calls == 2  # answer + grounding, no rewrite
+
+
+def test_model_finding_no_answer_rewrites_then_answers():
+    """Self-correction starts when the LLM says the evidence has no answer."""
+    retriever = FixedRetriever("vector", GOOD)
+    llm = scripted_llm(["NO_ANSWER", "Twenty days [1]."], [True])
     state, _ = run(QueryPipeline({"vector": retriever}, llm, keep_order))
     assert state["rewrites"] == ["annual leave entitlement days"]
     assert retriever.queries == ["How many leave days?", "annual leave entitlement days"]
-    assert state["relevance_history"][0] < state["relevance_history"][1]
-    assert not state["answer"].insufficient_evidence
+    assert state["answer"].text == "Twenty days [1]."
+    assert state["refused_reason"] == ""
 
 
-def test_relevance_never_improves_so_it_refuses_after_max_retries():
-    retriever = FixedRetriever("vector", BAD)
-    llm = scripted_llm([], [])
+def test_model_never_finds_an_answer_so_it_refuses_after_max_retries():
+    retriever = FixedRetriever("vector", GOOD)
+    llm = scripted_llm(["NO_ANSWER", "NO_ANSWER", "NO_ANSWER"], [])
     state, _ = run(QueryPipeline({"vector": retriever}, llm, keep_order))
     assert len(retriever.queries) == 3  # original + 2 rewrites
     assert state["answer"].text == INSUFFICIENT_EVIDENCE
-    assert "relevance" in state["refused_reason"]
+    assert "does not contain the answer" in state["refused_reason"]
+    assert state["grounding_score"] is None  # nothing to check on a refusal
 
 
 def test_failed_grounding_regenerates_once_in_strict_mode():

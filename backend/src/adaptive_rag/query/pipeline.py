@@ -1,13 +1,18 @@
 """The adaptive query flow as a LangGraph state machine (PRD 7.5-7.7).
 
-    classify -> route -> retrieve -> rerank -> evaluate
-                            ^                     |
-                            |        relevant? ---+--- yes --> generate -> ground -> done
-                            |                     |                          |
-                            +---- rewrite <-------+ no (retries left)        | unsupported claims
-                                                  |                          v
-                                       no retries left -> refuse    regenerate (strict) -> ground
-                                                                       still unsupported -> refuse
+    classify -> route -> retrieve -> rerank -> evaluate -> generate
+                            ^                                 |
+                            |             answered? ----------+--- yes --> ground -> done
+                            |                                 |              |
+                            +---- rewrite <-------------------+ no           | unsupported
+                                  (retries left)              |              v
+                                          no retries left -> done    regenerate (strict) -> ground
+                                          ("not enough evidence")    still unsupported -> refuse
+
+The LLM, not the reranker, decides whether the evidence answers the question. The
+reranker only sorts chunks: its absolute score is unreliable as a pass/fail gate
+(measured: 0.003 for a chunk the LLM answered from, 0.98 for an unanswerable question).
+`evaluate` still records the relevance score, as a signal for the "Why" panel.
 
 Each node does one job and records its time; the state carries everything the
 "Why did I get this answer?" panel shows.
@@ -169,7 +174,12 @@ class QueryPipeline:
             }
 
         def generate_step(state: QueryState) -> dict[str, Any]:
-            return {"answer": generate_answer(state["question"], state["reranked"], llm)}
+            answer = generate_answer(state["question"], state["reranked"], llm)
+            reason = "the retrieved evidence does not contain the answer"
+            return {
+                "answer": answer,
+                "refused_reason": reason if answer.insufficient_evidence else "",
+            }
 
         def ground_step(state: QueryState) -> dict[str, Any]:
             if not settings.grounding_enabled:
@@ -184,20 +194,17 @@ class QueryPipeline:
             answer = generate_answer(state["question"], state["reranked"], llm, strict=True)
             return {"answer": answer, "regenerated": True}
 
-        def refuse_step(state: QueryState) -> dict[str, Any]:
-            if state.get("answer") is not None:
-                reason = "answer still had unsupported claims after a strict retry"
-            else:
-                reason = "retrieved evidence stayed below the relevance threshold"
+        def refuse_step(_state: QueryState) -> dict[str, Any]:
             return {
                 "answer": Answer(text=INSUFFICIENT_EVIDENCE, insufficient_evidence=True),
-                "refused_reason": reason,
+                "refused_reason": "answer still had unsupported claims after a strict retry",
             }
 
-        def after_evaluate(state: QueryState) -> str:
-            if state["relevance"] >= settings.relevance_threshold:
-                return "generate"
-            return "rewrite" if needs_retry(state["relevance"], state["attempt"]) else "refuse"
+        def after_generate(state: QueryState) -> str:
+            if not state["answer"].insufficient_evidence:
+                return "ground"
+            # The model could not answer from this evidence: search again with a rewrite
+            return "rewrite" if needs_retry(True, state["attempt"]) else "done"
 
         def after_ground(state: QueryState) -> str:
             if not state["unsupported_claims"]:
@@ -223,13 +230,11 @@ class QueryPipeline:
         graph.add_edge("route", "retrieve")
         graph.add_edge("retrieve", "rerank")
         graph.add_edge("rerank", "evaluate")
+        graph.add_edge("evaluate", "generate")
         graph.add_conditional_edges(
-            "evaluate",
-            after_evaluate,
-            {"generate": "generate", "rewrite": "rewrite", "refuse": "refuse"},
+            "generate", after_generate, {"ground": "ground", "rewrite": "rewrite", "done": END}
         )
         graph.add_edge("rewrite", "retrieve")
-        graph.add_edge("generate", "ground")
         graph.add_conditional_edges(
             "ground", after_ground, {"done": END, "regenerate": "regenerate", "refuse": "refuse"}
         )

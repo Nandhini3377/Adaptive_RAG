@@ -272,7 +272,10 @@ def test_users_never_see_each_others_documents(client, llm):
     client.post("/query", json={"question": "How many leave days?"}, headers=bob)
     bob_prompts = [m["content"] for call in llm.calls[calls_before:] for m in call]
     assert bob_prompts  # the query did reach the LLM
-    assert all("annual leave" not in prompt for prompt in bob_prompts)
+    # Phrases found only in Alice's document (not in the fake LLM's canned reply)
+    for alice_only in ("annual leave per year", "Never share your password"):
+        assert all(alice_only not in prompt for prompt in bob_prompts)
+    assert any("Bob's salary is secret" in prompt for prompt in bob_prompts)  # his own text
 
     # Bob cannot target Alice's document by ID either
     targeted = {"question": "Leave?", "document_ids": [alice_doc]}

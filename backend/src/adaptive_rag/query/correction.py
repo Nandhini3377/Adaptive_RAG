@@ -17,10 +17,10 @@ def relevance_score(reranked: list[SearchHit]) -> float:
     return round((scores[0] + mean(scores[:3])) / 2, 3)
 
 
-def needs_retry(relevance: float, attempt: int) -> bool:
+def needs_retry(insufficient_evidence: bool, attempt: int) -> bool:
     """Return True if retrieval should be retried with a rewritten query."""
-    # Stop retrying once the budget is used up, even if relevance is low
-    return relevance < settings.relevance_threshold and attempt < settings.max_retries
+    # Retry only when the model could not answer, and stop once the budget is used up
+    return insufficient_evidence and attempt < settings.max_retries
 
 
 # ------------------------------------------------------------------ rewrite
@@ -32,9 +32,13 @@ _REWRITE_SCHEMA = {
     "additionalProperties": False,
 }
 
-_REWRITE_PROMPT = """A search over company documents found nothing relevant for this question.
-Rewrite it as a clearer search query: expand abbreviations, use the likely formal terms
-documents would use, and keep every specific name, ID, or number. Do not answer it.
+_REWRITE_PROMPT = """A search over company documents did not find an answer to this question.
+Rewrite it as ONE short, direct question that asks for the underlying fact or rule, in
+the formal words a policy or technical document would use. Keep every specific name, ID,
+or code. Do not answer it, and do not write a list of keywords.
+
+Example: "i put 11 days sick leave is that ok"
+      -> "How many days of sick leave are employees entitled to?"
 
 Original question: {question}
 {previous}"""

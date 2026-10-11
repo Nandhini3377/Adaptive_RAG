@@ -116,8 +116,7 @@ class Settings(BaseSettings):
     # Query intelligence and self-correction (PRD 7.5, 7.6)
     classifier_llm_fallback: bool = True  # ask the LLM only when rules are unsure
     classifier_max_tokens: int = 4000
-    relevance_threshold: float = 0.15  # reranker-based relevance below this -> rewrite
-    max_retries: int = 2  # query rewrites before giving up
+    max_retries: int = 2  # query rewrites when the model finds no answer, before giving up
     rewrite_max_tokens: int = 4000
     grounding_max_tokens: int = 6000
     grounding_enabled: bool = True

@@ -28,6 +28,8 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    for noisy in ("httpx", "neo4j.notifications"):  # one line per LLM call / Cypher hint
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     if args.no_cache:
         settings.llm_cache_enabled = False
     report = run_lab(
