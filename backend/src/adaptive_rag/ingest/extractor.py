@@ -152,6 +152,7 @@ def _extract_batch(
         _SCHEMA,
         name="graph_extraction",
         max_tokens=settings.extraction_max_tokens,
+        reasoning_effort=settings.structured_reasoning_effort,
     )
     return response.data or {}, response.input_tokens + response.output_tokens, response.cost_inr
 

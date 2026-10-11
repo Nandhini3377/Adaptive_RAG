@@ -58,6 +58,7 @@ def rewrite_query(question: str, previous: list[str], llm: LLM) -> str:
             _REWRITE_SCHEMA,
             name="rewrite",
             max_tokens=settings.rewrite_max_tokens,
+            reasoning_effort=settings.structured_reasoning_effort,
         )
     except LLMError:
         return question
@@ -128,6 +129,7 @@ def check_grounding(answer: Answer, llm: LLM) -> GroundingResult:
         _GROUNDING_SCHEMA,
         name="grounding",
         max_tokens=settings.grounding_max_tokens,
+        reasoning_effort=settings.grounding_reasoning_effort,
     )
     claims = (response.data or {}).get("claims", [])
     supported = [c for c in claims if c.get("supported")]

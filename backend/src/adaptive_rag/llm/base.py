@@ -10,7 +10,9 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 Message = dict[str, str]  # {"role": "system" | "user" | "assistant", "content": "..."}
-ReasoningEffort = Literal["low", "medium", "high"]
+# How long the model "thinks" before answering. None switches reasoning off (sent as an
+# explicit null; leaving the field out would mean the provider's default, medium).
+ReasoningEffort = Literal["low", "medium", "high"] | None
 
 
 class LLMError(Exception):

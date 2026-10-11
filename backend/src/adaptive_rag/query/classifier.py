@@ -123,6 +123,7 @@ def classify(question: str, llm: LLM | None = None) -> Classification:
             _LLM_SCHEMA,
             name="query_type",
             max_tokens=settings.classifier_max_tokens,
+            reasoning_effort=settings.structured_reasoning_effort,
         )
     except LLMError:
         return by_rules  # fall back to the rule guess rather than failing the query

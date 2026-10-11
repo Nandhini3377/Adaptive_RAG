@@ -2,6 +2,7 @@
 
 import secrets
 from pathlib import Path
+from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,16 @@ class Settings(BaseSettings):
     # Price in INR per million tokens (PRD Section 14); reasoning counts as output
     llm_input_price_inr: float = 29.28
     llm_output_price_inr: float = 73.20
+    # Reasoning per kind of call. None = off, sent as an explicit null. Measured on Sarvam:
+    # - graph extraction: off matched "low" (same entities and relationships) in 6 s and
+    #   1.3K tokens instead of 45 s and 9.6K
+    # - 12 answers + grounding checks: off and "low" were right on the same 11; off took
+    #   0.2-5 s per answer instead of 1-22 s, at roughly a tenth of the cost
+    # The one miss was a retrieval failure (recall 0), which more thinking cannot fix.
+    # Re-measure with the Evaluation Lab before turning reasoning back on anywhere.
+    structured_reasoning_effort: Literal["low", "medium", "high"] | None = None
+    answer_reasoning_effort: Literal["low", "medium", "high"] | None = None
+    grounding_reasoning_effort: Literal["low", "medium", "high"] | None = None
     # Reuse saved answers for identical calls (dev and eval cost ~nothing)
     llm_cache_enabled: bool = True
     # Sarvam reasons for ~1-4K tokens before answering (measured), rarely more

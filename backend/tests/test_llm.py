@@ -120,6 +120,15 @@ def test_running_out_of_tokens_is_a_clear_error():
         llm.complete([{"role": "user", "content": "hi"}], max_tokens=50)
 
 
+def test_reasoning_off_is_sent_as_an_explicit_null():
+    """Leaving the field out means the provider default (medium), so None must be sent."""
+    seen = []
+    llm = SarvamLLM(http_client=fake_sarvam("ok", seen=seen))
+    llm.complete([{"role": "user", "content": "hi"}], reasoning_effort=None)
+    assert "reasoning_effort" in seen[0]
+    assert seen[0]["reasoning_effort"] is None
+
+
 def test_half_written_answer_is_truncation_and_is_not_retried():
     """A reply cut off mid-JSON must not be parsed, and re-asking would only be cut off again."""
     seen = []

@@ -114,6 +114,7 @@ def _extract_sample(sample: list[Section], llm: LLM) -> LLMResponse | None:
             _EXTRACTION_SCHEMA,
             name="sample_extraction",
             max_tokens=settings.sample_max_tokens,
+            reasoning_effort=settings.structured_reasoning_effort,
         )
     except LLMTruncatedError:
         return None

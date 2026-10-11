@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from adaptive_rag import services
 from adaptive_rag.api.app import create_app
 from adaptive_rag.config import settings
+from adaptive_rag.llm.base import LLMError
 from adaptive_rag.store import db
 from adaptive_rag.store.bm25_store import BM25Store
 from adaptive_rag.store.vector_store import VectorStore
@@ -233,6 +234,19 @@ def test_manual_mode_needs_its_index(client):
     upload(client, headers, intents=["facts"])
     response = client.post("/query", json={"question": "Leave?", "mode": "hybrid"}, headers=headers)
     assert response.status_code == 400
+
+
+def test_model_failure_during_a_query_is_a_clear_503(client, llm):
+    headers = login(client)
+    upload_ready(client, headers)
+
+    def model_down(_messages):
+        raise LLMError("Sarvam call failed: timeout")
+
+    llm.reply = model_down
+    response = client.post("/query", json={"question": "How many leave days?"}, headers=headers)
+    assert response.status_code == 503
+    assert "language model failed" in response.json()["detail"]
 
 
 def test_query_without_ready_documents_is_a_clear_error(client):

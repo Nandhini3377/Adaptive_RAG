@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep
+from adaptive_rag.llm.base import LLMError
 from adaptive_rag.models.reranker import rerank
 from adaptive_rag.query.pipeline import QueryPipeline
 from adaptive_rag.query.router import RoutingError, available_modes
@@ -80,6 +81,10 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
         )
     except RoutingError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+    except LLMError as error:  # the model was unreachable or could not finish an answer
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, f"The language model failed: {error}"
+        ) from error
 
     answer, routing = state["answer"], state["routing"]
     recommendation_ids = _missing_index(documents, routing.recommendation)

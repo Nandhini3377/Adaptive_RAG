@@ -22,6 +22,7 @@ class FakeLLM(LLM):
         self.reply = reply
         self.data = data
         self.calls: list[list[Message]] = []
+        self.efforts: list[ReasoningEffort] = []  # reasoning effort of each call
 
     def complete(
         self,
@@ -31,6 +32,7 @@ class FakeLLM(LLM):
         reasoning_effort: ReasoningEffort = "low",
     ) -> LLMResponse:
         self.calls.append(messages)
+        self.efforts.append(reasoning_effort)
         text = self.reply(messages) if callable(self.reply) else self.reply
         return self._response(text)
 
@@ -44,6 +46,7 @@ class FakeLLM(LLM):
         reasoning_effort: ReasoningEffort = "low",
     ) -> LLMResponse:
         self.calls.append(messages)
+        self.efforts.append(reasoning_effort)
         data = self.data(messages) if callable(self.data) else (self.data or {})
         response = self._response("{}")
         response.data = data

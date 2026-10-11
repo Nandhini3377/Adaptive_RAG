@@ -17,6 +17,7 @@ Rules:
 - Use ONLY the numbered evidence below. Do not use outside knowledge.
 - After every sentence that states a fact, cite its evidence like [1] or [1][3].
 - If the evidence does not contain the answer, reply with exactly: {_NO_ANSWER_TOKEN}
+- Start with the answer itself. Do not describe your steps or restate the question.
 - Be concise. Keep table values exactly as written."""
 
 _STRICT_SUFFIX = """
@@ -45,7 +46,9 @@ def generate_answer(question: str, hits: list[SearchHit], llm: LLM, strict: bool
         return Answer(text=INSUFFICIENT_EVIDENCE, insufficient_evidence=True)
 
     response = llm.complete(
-        build_messages(question, hits, strict), max_tokens=settings.answer_max_tokens
+        build_messages(question, hits, strict),
+        max_tokens=settings.answer_max_tokens,
+        reasoning_effort=settings.answer_reasoning_effort,
     )
     usage = {
         "input_tokens": response.input_tokens,

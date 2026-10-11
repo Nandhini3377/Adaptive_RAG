@@ -20,7 +20,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from adaptive_rag.config import settings
-from adaptive_rag.llm.base import LLM
+from adaptive_rag.llm.base import LLM, LLMError
 from adaptive_rag.llm.meter import MeteredLLM
 from adaptive_rag.query.answer import INSUFFICIENT_EVIDENCE, generate_answer
 from adaptive_rag.query.classifier import classify
@@ -174,7 +174,10 @@ class QueryPipeline:
         def ground_step(state: QueryState) -> dict[str, Any]:
             if not settings.grounding_enabled:
                 return {"grounding_score": None}
-            result = check_grounding(state["answer"], llm)
+            try:
+                result = check_grounding(state["answer"], llm)
+            except LLMError:  # the answer stands, shown as unchecked rather than lost
+                return {"grounding_score": None}
             return {"grounding_score": result.score, "unsupported_claims": result.unsupported}
 
         def regenerate_step(state: QueryState) -> dict[str, Any]:

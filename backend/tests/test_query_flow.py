@@ -2,6 +2,7 @@
 
 import pytest
 
+from adaptive_rag.llm.base import LLMError
 from adaptive_rag.query.answer import INSUFFICIENT_EVIDENCE
 from adaptive_rag.query.classifier import classify, classify_by_rules
 from adaptive_rag.query.correction import check_grounding, needs_retry, relevance_score
@@ -239,3 +240,48 @@ def test_relationship_question_without_graph_uses_hybrid_and_recommends_graph():
     assert state["routing"].ideal_mode == "graph"
     assert state["routing"].mode == "hybrid"
     assert state["routing"].recommendation.index_to_build == "graph"
+
+
+# ------------------------------------------------------------ reasoning effort
+
+
+def test_every_call_uses_its_configured_reasoning_effort(monkeypatch):
+    """Reasoning is off by default (measured: same accuracy, ~10x cheaper) and set per task."""
+    from adaptive_rag.ingest.extractor import extract_graph
+    from adaptive_rag.ingest.sampler import analyze_sample
+    from adaptive_rag.query.answer import generate_answer
+    from adaptive_rag.query.correction import rewrite_query
+    from adaptive_rag.schemas import DocumentProfile, Section
+
+    chunk = Chunk(id="c1", document_id="d", owner_id="u", text="Payments depends on Auth.")
+    section = Section(id="0", title="Overview", text="Payments depends on Auth.")
+    structured = FakeLLM(data={"entities": [], "relationships": [], "query": "q", "claims": []})
+    extract_graph([chunk], structured)
+    analyze_sample([section], DocumentProfile(), structured)
+    rewrite_query("leave?", [], structured)
+    classify("Tell me about our approach to data", structured)
+    assert structured.efforts == [None, None, None, None]
+
+    answering = FakeLLM("Twenty days [1].", data={"claims": []})
+    answer = generate_answer("How many leave days?", hits(0.9), answering)
+    check_grounding(answer, answering)
+    assert answering.efforts == [None, None]
+
+    monkeypatch.setattr("adaptive_rag.query.answer.settings.answer_reasoning_effort", "high")
+    generate_answer("How many leave days?", hits(0.9), answering)
+    assert answering.efforts[-1] == "high"
+
+
+def test_failed_grounding_call_keeps_the_answer_unchecked():
+    """If the checker itself fails, the user still gets the answer, marked as not checked."""
+
+    class GroundingDown(FakeLLM):
+        def complete_json(self, messages, schema, **kwargs):
+            if "Check an answer" in messages[0]["content"]:
+                raise LLMError("checker unavailable")
+            return super().complete_json(messages, schema, **kwargs)
+
+    llm = GroundingDown("Twenty days [1].")
+    state, _ = run(QueryPipeline({"vector": FixedRetriever("vector", GOOD)}, llm, keep_order))
+    assert state["answer"].text == "Twenty days [1]."
+    assert state["grounding_score"] is None
