@@ -1,4 +1,4 @@
-"""Cross-encoder reranking with FastEmbed (bge-reranker-base, ONNX, no PyTorch).
+"""Cross-encoder reranking with FastEmbed (ms-marco-MiniLM-L-12, ONNX, no PyTorch).
 
 The embedder compares a question and a chunk as two separate vectors (fast,
 approximate). The reranker reads them together (slower, more accurate), so it

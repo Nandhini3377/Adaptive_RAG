@@ -90,7 +90,8 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     # BGE models search better when questions (not chunks) carry this instruction
     embedding_query_prefix: str = "Represent this sentence for searching relevant passages: "
-    reranker_model: str = "BAAI/bge-reranker-base"
+    # 0.12 GB, so the API fits a 2 GB server; bge-reranker-base (1.04 GB) ranks better
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-12-v2"
 
     # Storage
     data_dir: Path = PROJECT_ROOT / "data"

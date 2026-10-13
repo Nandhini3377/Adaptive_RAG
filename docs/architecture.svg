@@ -142,7 +142,7 @@
 
   <rect x="1160" y="580" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
   <text x="1340" y="604" text-anchor="middle" class="boxTitle">Fusion + rerank</text>
-  <text x="1340" y="623" text-anchor="middle" class="boxSub">reciprocal rank fusion · bge-reranker-base</text>
+  <text x="1340" y="623" text-anchor="middle" class="boxSub">reciprocal rank fusion · ms-marco-MiniLM-L-12</text>
   <path d="M1340 638 V658" class="flow"/>
 
   <rect x="1160" y="660" width="360" height="58" rx="9" fill="#ffffff" stroke="#10a37f" stroke-width="1.4"/>
@@ -191,7 +191,7 @@
 
   <rect x="600" y="1070" width="500" height="68" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
   <text x="850" y="1097" text-anchor="middle" class="boxTitle">Local models</text>
-  <text x="850" y="1118" text-anchor="middle" class="boxSub">FastEmbed (ONNX) · bge-small · bge-reranker-base</text>
+  <text x="850" y="1118" text-anchor="middle" class="boxSub">FastEmbed (ONNX) · bge-small · ms-marco-MiniLM-L-12</text>
 
   <rect x="1140" y="1070" width="500" height="68" rx="9" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
   <text x="1390" y="1097" text-anchor="middle" class="boxTitle">Traces + LLM cache — SQLite (Langfuse optional)</text>

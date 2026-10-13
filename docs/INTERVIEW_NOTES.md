@@ -134,7 +134,7 @@ Rules (PRD FR17):
 - **BM25** keyword index per document, in memory, rebuilt from SQLite chunks on start.
 - Custom tokenizer: lowercase, keeps IDs like `auth-403`, `v2.1`, `user_id` whole, drops stopwords ("what", "does"), light plural stemming ("means" → "mean").
 - **Reciprocal rank fusion** merges the vector and BM25 lists: `score = Σ 1/(60 + rank)`. Ranks are comparable across methods; raw scores (cosine 0–1 vs BM25 0–30) are not.
-- **Reranker** (`bge-reranker-base`, a cross-encoder) reads question and chunk *together* — more accurate than embeddings, too slow for the whole corpus, so it only rescores the ~20 fused candidates. Scores squashed to 0–1 with a sigmoid.
+- **Reranker** (`ms-marco-MiniLM-L-12-v2`, a cross-encoder; swapped from `bge-reranker-base` — 0.12 GB vs 1.04 GB — so the API fits a 2 GB server) reads question and chunk *together* — more accurate than embeddings, too slow for the whole corpus, so it only rescores the ~20 fused candidates. Scores squashed to 0–1 with a sigmoid.
 - All modes share one `Retriever` interface (strategy pattern), so the router can swap modes.
 
 **What we measured (honest findings):**
