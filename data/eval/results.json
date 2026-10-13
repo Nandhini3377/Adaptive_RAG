@@ -1,0 +1,675 @@
+{
+  "run": {
+    "created_at": "2026-10-12T12:03:23+00:00",
+    "modes": [
+      "vector",
+      "hybrid",
+      "graph",
+      "graph_hybrid"
+    ],
+    "full": false,
+    "questions": 5,
+    "graph_available": true,
+    "seconds": 15.3
+  },
+  "modes": {
+    "vector": {
+      "overall": {
+        "questions": 5,
+        "hit_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "retrieval_ms_p50": 487.3,
+        "retrieval_ms_p95": 5056.6
+      },
+      "by_type": {
+        "fact_lookup": {
+          "questions": 5,
+          "hit_at_5": 1.0,
+          "recall_at_5": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms_p50": 487.3,
+          "retrieval_ms_p95": 5056.6
+        }
+      }
+    },
+    "hybrid": {
+      "overall": {
+        "questions": 5,
+        "hit_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "retrieval_ms_p50": 459.7,
+        "retrieval_ms_p95": 609.5
+      },
+      "by_type": {
+        "fact_lookup": {
+          "questions": 5,
+          "hit_at_5": 1.0,
+          "recall_at_5": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms_p50": 459.7,
+          "retrieval_ms_p95": 609.5
+        }
+      }
+    },
+    "graph": {
+      "overall": {
+        "questions": 5,
+        "hit_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "mrr": 0.8,
+        "retrieval_ms_p50": 394.6,
+        "retrieval_ms_p95": 508.9
+      },
+      "by_type": {
+        "fact_lookup": {
+          "questions": 5,
+          "hit_at_5": 0.8,
+          "recall_at_5": 0.8,
+          "mrr": 0.8,
+          "retrieval_ms_p50": 394.6,
+          "retrieval_ms_p95": 508.9
+        }
+      }
+    },
+    "graph_hybrid": {
+      "overall": {
+        "questions": 5,
+        "hit_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "retrieval_ms_p50": 524.1,
+        "retrieval_ms_p95": 553.7
+      },
+      "by_type": {
+        "fact_lookup": {
+          "questions": 5,
+          "hit_at_5": 1.0,
+          "recall_at_5": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms_p50": 524.1,
+          "retrieval_ms_p95": 553.7
+        }
+      }
+    },
+    "router": {
+      "overall": {
+        "questions": 5,
+        "hit_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "retrieval_ms_p50": 487.3,
+        "retrieval_ms_p95": 5056.6
+      },
+      "by_type": {
+        "fact_lookup": {
+          "questions": 5,
+          "hit_at_5": 1.0,
+          "recall_at_5": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms_p50": 487.3,
+          "retrieval_ms_p95": 5056.6
+        }
+      }
+    }
+  },
+  "router": {
+    "accuracy": 1.0,
+    "choices": {
+      "vector": 5
+    }
+  },
+  "strategy": {
+    "accuracy": 1.0,
+    "documents": [
+      {
+        "document": "employee_handbook.md",
+        "decided": "vector",
+        "confidence": 0.86,
+        "best_measured": "vector",
+        "expected_by_design": "vector",
+        "scores": {
+          "vector": 1.0,
+          "hybrid": 1.0,
+          "graph_hybrid": 1.0
+        },
+        "correct": true
+      }
+    ]
+  },
+  "rule_coverage": 1.0,
+  "analysis_cost_ratio": 0.328,
+  "rewrite_gain": null,
+  "questions": [
+    {
+      "id": "q01",
+      "type": "fact_lookup",
+      "question": "How many days of annual leave do employees get?",
+      "answerable": true,
+      "results": {
+        "vector": {
+          "mode": "vector",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 6137.6,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "hybrid": {
+          "mode": "hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 388.1,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph": {
+          "mode": "graph",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 326.6,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph_hybrid": {
+          "mode": "graph_hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 543.5,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        }
+      },
+      "router_mode": "vector",
+      "router_ideal": "vector",
+      "best_modes": [
+        "vector",
+        "hybrid",
+        "graph",
+        "graph_hybrid"
+      ]
+    },
+    {
+      "id": "q02",
+      "type": "fact_lookup",
+      "question": "How many days of sick leave do employees get?",
+      "answerable": true,
+      "results": {
+        "vector": {
+          "mode": "vector",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 487.3,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "hybrid": {
+          "mode": "hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 579.5,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph": {
+          "mode": "graph",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 520.2,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph_hybrid": {
+          "mode": "graph_hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 517.1,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        }
+      },
+      "router_mode": "vector",
+      "router_ideal": "vector",
+      "best_modes": [
+        "vector",
+        "hybrid",
+        "graph",
+        "graph_hybrid"
+      ]
+    },
+    {
+      "id": "q03",
+      "type": "fact_lookup",
+      "question": "How many casual leave days are there?",
+      "answerable": true,
+      "results": {
+        "vector": {
+          "mode": "vector",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 732.5,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "hybrid": {
+          "mode": "hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 617.0,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph": {
+          "mode": "graph",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 463.5,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph_hybrid": {
+          "mode": "graph_hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 556.3,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        }
+      },
+      "router_mode": "vector",
+      "router_ideal": "vector",
+      "best_modes": [
+        "vector",
+        "hybrid",
+        "graph",
+        "graph_hybrid"
+      ]
+    },
+    {
+      "id": "q04",
+      "type": "fact_lookup",
+      "question": "How many unused annual leave days carry over to the next year?",
+      "answerable": true,
+      "results": {
+        "vector": {
+          "mode": "vector",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 476.8,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "hybrid": {
+          "mode": "hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 410.3,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph": {
+          "mode": "graph",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 394.6,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph_hybrid": {
+          "mode": "graph_hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 522.1,
+          "top_chunks": [
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week."
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        }
+      },
+      "router_mode": "vector",
+      "router_ideal": "vector",
+      "best_modes": [
+        "vector",
+        "hybrid",
+        "graph",
+        "graph_hybrid"
+      ]
+    },
+    {
+      "id": "q05",
+      "type": "fact_lookup",
+      "question": "What are the core working hours?",
+      "answerable": true,
+      "results": {
+        "vector": {
+          "mode": "vector",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 457.7,
+          "top_chunks": [
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "hybrid": {
+          "mode": "hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 459.7,
+          "top_chunks": [
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph": {
+          "mode": "graph",
+          "hit": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "retrieval_ms": 9.3,
+          "top_chunks": [],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        },
+        "graph_hybrid": {
+          "mode": "graph_hybrid",
+          "hit": 1.0,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "retrieval_ms": 524.1,
+          "top_chunks": [
+            "Core hours are 10:00 to 16:00, when everyone should be available for meetings. Outside core hours you can arrange your day as suits you best.\n\nEmployees may work from home up to 3 days per week. Agree",
+            "Every employee receives 20 days of annual leave per year. Plan longer holidays with your team at least two weeks ahead so work can be shared fairly.\n\nEmployees also get 10 days of sick leave per year.",
+            "New employees have a probation period of 6 months. During probation your manager will meet you every month to discuss how things are going.\n\nThe notice period for resignation is 60 days. Your manager ",
+            "Welcome to Nimbus Labs. This handbook explains how we work together, what you can expect from us, and what we expect from you. Please read it during your first week.",
+            "Expenses up to ₹5,000 can be claimed without manager approval. Larger expenses need written approval from your manager before you spend the money.\n\nLaptops are replaced every 3 years, and you can requ"
+          ],
+          "answer": null,
+          "correct": null,
+          "refused": null,
+          "faithfulness": null,
+          "latency_ms": null,
+          "tokens": null,
+          "cost_inr": null,
+          "rewrites": null,
+          "relevance_history": []
+        }
+      },
+      "router_mode": "vector",
+      "router_ideal": "vector",
+      "best_modes": [
+        "vector",
+        "hybrid",
+        "graph_hybrid"
+      ]
+    }
+  ]
+}

@@ -78,6 +78,17 @@ export interface Recommendation {
   message: string;
 }
 
+/** How good the retrieved chunks were, judged by the LLM after the answer. */
+export interface RetrievalQuality {
+  precision: number; // relevant chunks used / chunks used
+  relative_recall: number | null; // null: no other mode to compare, or nothing relevant found
+  used: number;
+  relevant_used: number;
+  relevant_in_pool: number; // relevant chunks found by any available mode
+  pool_size: number;
+  compared_modes: string[];
+}
+
 export interface QueryOut {
   query_id: string;
   answer: string;
@@ -93,6 +104,7 @@ export interface QueryOut {
   rewrites: string[];
   graph_paths: GraphPath[];
   scores: { relevance: number; relevance_history: number[]; grounding: number | null };
+  quality: RetrievalQuality | null;
   regenerated: boolean;
   refused_reason: string;
   documents: Record<string, string>;
@@ -102,57 +114,4 @@ export interface QueryOut {
   reasoning_tokens: number;
   llm_calls: number;
   cost_inr: number;
-}
-
-export interface ModeSummary {
-  questions: number;
-  hit_at_5: number;
-  recall_at_5: number;
-  mrr: number;
-  retrieval_ms_p50: number;
-  retrieval_ms_p95: number;
-  answer_correctness?: number;
-  faithfulness?: number | null;
-  refusal_accuracy?: number | null;
-  false_refusals?: number;
-  latency_ms_p50?: number;
-  latency_ms_p95?: number;
-  tokens_per_query?: number;
-  cost_inr_per_query?: number;
-}
-
-export interface StrategyRow {
-  document: string;
-  decided: string;
-  confidence: number;
-  best_measured: string;
-  expected_by_design: string;
-  scores: Record<string, number>;
-  correct: boolean;
-}
-
-export interface EvalReport {
-  run: {
-    created_at: string;
-    modes: Mode[];
-    full: boolean;
-    questions: number;
-    graph_available: boolean;
-    seconds: number;
-  };
-  modes: Record<string, { overall: ModeSummary; by_type: Record<string, ModeSummary> }>;
-  router: { accuracy: number; choices: Record<string, number> };
-  strategy: { accuracy: number | null; documents: StrategyRow[] };
-  rule_coverage: number;
-  analysis_cost_ratio: number | null;
-  rewrite_gain: number | null;
-  error?: string;
-}
-
-export interface EvalRunOut {
-  id: string;
-  dataset: string;
-  status: "running" | "done" | "failed";
-  progress: string;
-  metrics: Partial<EvalReport>;
 }

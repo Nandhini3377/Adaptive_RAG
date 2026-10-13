@@ -48,10 +48,17 @@ def _fail_on_error(step: Callable[..., None]) -> Callable[..., None]:
                 if document is not None:
                     document.status = "failed"
                     document.stage = f"Failed during {step.__name__.replace('_', ' ')}"
-                    document.error = str(error)[:1000]
+                    document.error = _public_error(error)
 
     run.__name__ = step.__name__
     return run
+
+
+def _public_error(error: Exception) -> str:
+    """What the uploader is shown. The real error (paths, provider replies) is in the log."""
+    if isinstance(error, LLMError):
+        return "The language model failed while reading this document. Try again later."
+    return "Something went wrong while processing this document."
 
 
 # --------------------------------------------------------------- step 1: scan
@@ -173,7 +180,7 @@ def _build_graph(document_id: str, owner_id: str, chunks: list[Chunk]) -> None:
     extraction = extract_graph(chunks, services.llm())
     graph.write_document(document_id, owner_id, extraction, {c.id: c.section for c in chunks})
     _set_graph_status(document_id, "ready")
-    with db.session_scope() as session:  # for the analysis-cost ratio in the Evaluation Lab
+    with db.session_scope() as session:  # kept to compare the sample's cost with full extraction
         analysis = session.get(db.DocumentAnalysis, document_id)
         if analysis is not None:
             analysis.raw_features = {

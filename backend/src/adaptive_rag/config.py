@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # - 12 answers + grounding checks: off and "low" were right on the same 11; off took
     #   0.2-5 s per answer instead of 1-22 s, at roughly a tenth of the cost
     # The one miss was a retrieval failure (recall 0), which more thinking cannot fix.
-    # Re-measure with the Evaluation Lab before turning reasoning back on anywhere.
+    # Re-measure before turning reasoning back on anywhere.
     structured_reasoning_effort: Literal["low", "medium", "high"] | None = None
     answer_reasoning_effort: Literal["low", "medium", "high"] | None = None
     grounding_reasoning_effort: Literal["low", "medium", "high"] | None = None
@@ -53,12 +53,24 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr = SecretStr("")
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24
+    # Wrong passwords allowed per email inside the window before logins are paused
+    # (counted in memory, so a restart clears it)
+    login_max_attempts: int = 10
+    login_window_minutes: int = 15
+    # Set REGISTRATION_ENABLED=false on a public deployment once your accounts exist
+    registration_enabled: bool = True
+    max_users: int = 100  # registration closes when this many accounts exist
 
     # API
     cors_origins: list[str] = ["http://localhost:3000"]
+    api_docs_enabled: bool = True  # /docs and /openapi.json; switch off in production
 
     # Uploads
     max_upload_mb: int = 50
+
+    # Per-user limits: every document and every question spends LLM credits
+    max_documents_per_user: int = 20
+    max_queries_per_day: int = 200
 
     # Graph (Neo4j)
     neo4j_uri: str = "bolt://localhost:7687"
@@ -125,6 +137,10 @@ class Settings(BaseSettings):
     # The checker is itself an LLM and is noisy (it flagged correct answers in repeat
     # runs), so one doubtful claim must not discard an otherwise supported answer.
     grounding_threshold: float = 0.5
+    # Precision and relative recall for each question: one extra LLM call, plus a search
+    # with every other mode the documents have (see query/quality.py)
+    retrieval_quality_enabled: bool = True
+    quality_max_tokens: int = 300
 
     # Retrieval
     top_k: int = 5  # chunks given to the LLM

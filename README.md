@@ -60,16 +60,13 @@ npm run dev                                          # http://localhost:3000
 
 1. Register, then upload a document (PDF, DOCX, HTML, Markdown, TXT).
 2. Watch the scan, answer the intent question (or skip), and read the decision.
-3. Ask questions on **Ask**; open "Why did I get this answer?".
-4. On **Evaluation Lab**, run a retrieval eval (cheap) or a full eval (spends credits).
+3. Ask questions on **Ask**; each answer shows its precision and relative recall. Open "Why did I get this answer?" for the detail.
 
 ### Command-line tools
 
 ```bash
 cd backend
 uv run python ../scripts/generate_demo_docs.py          # rebuild the demo corpus + 60 questions
-uv run python scripts/run_eval.py                       # retrieval eval → data/eval/results.md
-uv run python scripts/run_eval.py --full --limit 10     # with answers (spends credits)
 uv run python scripts/ask.py ../PRD.md "Which LLM is used?"   # one-off question, no server
 ```
 
@@ -78,7 +75,7 @@ uv run python scripts/ask.py ../PRD.md "Which LLM is used?"   # one-off question
 ```bash
 cd backend
 uv run pytest -m "not slow"                # fast offline suite (fake LLM, no network)
-uv run pytest                              # + Evaluation Lab tests (~2 min, real local models)
+uv run pytest                              # + slow tests (real local models)
 RUN_LIVE_LLM=1 uv run pytest -m live       # one real Sarvam call
 uv run ruff check . && uv run ruff format --check .
 
@@ -91,13 +88,12 @@ Neo4j tests run automatically when `NEO4J_PASSWORD` is set and Neo4j is up; othe
 
 ```text
 backend/src/adaptive_rag/
-  api/          FastAPI routes (auth, documents, query, eval)
+  api/          FastAPI routes (auth, documents, query)
   ingest/       parser, scanner, sampler, intent, selector, chunker, extractor, jobs
   store/        db (SQLite), vector_store (Qdrant), bm25_store, graph_store (Neo4j), files
   retrieval/    vector, hybrid, graph, graph_hybrid, fusion (RRF)
-  query/        classifier, router, correction (relevance/rewrite/grounding), answer, pipeline (LangGraph)
+  query/        classifier, router, correction (relevance/rewrite/grounding), answer, quality (precision/recall), pipeline (LangGraph)
   llm/          interface, Sarvam client, response cache, usage meter
-  eval/         metrics, lab
 data/           demo_spec.yaml, demo_docs/, eval/questions.jsonl
 web/            Next.js dashboard
 docs/           PRD build steps, interview notes

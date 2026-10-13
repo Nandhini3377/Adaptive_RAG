@@ -9,6 +9,9 @@
                                           no retries left -> done    regenerate (strict) -> ground
                                           ("not enough evidence")    still unsupported -> refuse
 
+Every path to "done" passes through `measure`, which scores the retrieved chunks
+(precision and relative recall, see query/quality.py).
+
 The LLM, not the reranker, decides whether the evidence answers the question. The
 reranker only sorts chunks: its absolute score is unreliable as a pass/fail gate
 (measured: 0.003 for a chunk the LLM answered from, 0.98 for an unanswerable question).
@@ -35,6 +38,7 @@ from adaptive_rag.query.correction import (
     relevance_score,
     rewrite_query,
 )
+from adaptive_rag.query.quality import RetrievalQuality, measure_quality
 from adaptive_rag.query.router import route
 from adaptive_rag.retrieval.base import Retriever
 from adaptive_rag.schemas import (
@@ -77,6 +81,7 @@ class QueryState(TypedDict, total=False):
     unsupported_claims: list[str]
     regenerated: bool
     refused_reason: str
+    quality: RetrievalQuality | None
     timings: dict[str, float]
 
 
@@ -117,6 +122,7 @@ class QueryPipeline:
                 "grounding_score": None,
                 "unsupported_claims": [],
                 "refused_reason": "",
+                "quality": None,
                 "timings": {},
             }
         )
@@ -213,6 +219,25 @@ class QueryPipeline:
                 "refused_reason": "answer still had unsupported claims after a strict retry",
             }
 
+        def measure_step(state: QueryState) -> dict[str, Any]:
+            if not settings.retrieval_quality_enabled:
+                return {"quality": None}
+            used_mode = state["routing"].mode
+            others = {m: r for m, r in self._retrievers.items() if m != used_mode}
+            try:
+                quality = measure_quality(
+                    state["question"],
+                    state["search_query"],
+                    state["reranked"],
+                    others,
+                    state["owner_id"],
+                    state["document_ids"],
+                    llm,
+                )
+            except LLMError:  # the answer stands; the scores are shown as not measured
+                quality = None
+            return {"quality": quality}
+
         def after_generate(state: QueryState) -> str:
             if not state["answer"].insufficient_evidence:
                 return "ground"
@@ -236,6 +261,7 @@ class QueryPipeline:
             ("ground", ground_step),
             ("regenerate", regenerate_step),
             ("refuse", refuse_step),
+            ("measure", measure_step),
         ]:
             graph.add_node(name, timed(name, step))
         graph.add_edge(START, "classify")
@@ -245,12 +271,19 @@ class QueryPipeline:
         graph.add_edge("rerank", "evaluate")
         graph.add_edge("evaluate", "generate")
         graph.add_conditional_edges(
-            "generate", after_generate, {"ground": "ground", "rewrite": "rewrite", "done": END}
+            "generate",
+            after_generate,
+            {"ground": "ground", "rewrite": "rewrite", "done": "measure"},
         )
-        graph.add_conditional_edges("rewrite", after_rewrite, {"retrieve": "retrieve", "done": END})
         graph.add_conditional_edges(
-            "ground", after_ground, {"done": END, "regenerate": "regenerate", "refuse": "refuse"}
+            "rewrite", after_rewrite, {"retrieve": "retrieve", "done": "measure"}
+        )
+        graph.add_conditional_edges(
+            "ground",
+            after_ground,
+            {"done": "measure", "regenerate": "regenerate", "refuse": "refuse"},
         )
         graph.add_edge("regenerate", "ground")
-        graph.add_edge("refuse", END)
+        graph.add_edge("refuse", "measure")
+        graph.add_edge("measure", END)
         return graph.compile()

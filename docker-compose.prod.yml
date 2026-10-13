@@ -1,0 +1,30 @@
+# Production: only the API runs here. Neo4j is on AuraDB and the dashboard is on Vercel.
+# Start: docker compose -f docker-compose.prod.yml up -d --build
+#
+# .env on the server needs:
+#   SARVAM_API_KEY, JWT_SECRET
+#   NEO4J_URI (neo4j+s://... from AuraDB), NEO4J_USER, NEO4J_PASSWORD
+#   CORS_ORIGINS='["https://your-app.vercel.app"]'
+#   REGISTRATION_ENABLED=false   (after you have created your own accounts)
+services:
+  api:
+    build: ./backend
+    container_name: adaptive-rag-api
+    env_file: .env
+    environment:
+      API_DOCS_ENABLED: "false"  # no public /docs page
+    ports:
+      # Localhost only: put an HTTPS proxy (e.g. Caddy) in front of it
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - api-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  api-data:

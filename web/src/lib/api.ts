@@ -1,13 +1,6 @@
 // A small typed client for the FastAPI backend. The login token lives in localStorage.
 
-import type {
-  AnalysisOut,
-  DocumentOut,
-  EvalRunOut,
-  Intent,
-  Mode,
-  QueryOut,
-} from "./types";
+import type { AnalysisOut, DocumentOut, Intent, Mode, QueryOut } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TOKEN_KEY = "adaptive-rag-token";
@@ -117,14 +110,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question, document_ids: documentIds, mode }),
     }),
-
-  startEval: (full: boolean, limit?: number) =>
-    request<EvalRunOut>("/eval/runs", {
-      method: "POST",
-      body: JSON.stringify({ dataset: "demo", full, limit }),
-    }),
-  listEvalRuns: () => request<EvalRunOut[]>("/eval/runs"),
-  getEvalRun: (id: string) => request<EvalRunOut>(`/eval/runs/${id}`),
 
   health: () => request<{ status: string; llm: string; neo4j: string }>("/health"),
 };

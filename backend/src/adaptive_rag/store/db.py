@@ -151,17 +151,6 @@ class Evaluation(Base):
     retry_count: Mapped[int] = mapped_column(default=0)
 
 
-class EvalRun(Base):
-    __tablename__ = "eval_runs"
-
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    dataset: Mapped[str] = mapped_column(String(200))
-    mode: Mapped[str] = mapped_column(String(50))
-    status: Mapped[str] = mapped_column(String(20), default="running")
-    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(default=now)
-
-
 class LLMCacheEntry(Base):
     __tablename__ = "llm_cache"
 

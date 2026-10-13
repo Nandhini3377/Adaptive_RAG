@@ -12,5 +12,5 @@ const TONES = {
 } as const;
 
 export function StatusBadge({ status }: { status: DocumentStatus }) {
-  return <Badge tone={TONES[status]}>{STATUS_LABELS[status]}</Badge>;
+  return <Badge tone={TONES[status]} dot>{STATUS_LABELS[status]}</Badge>;
 }

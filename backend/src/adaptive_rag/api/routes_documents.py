@@ -16,6 +16,8 @@ from pydantic import BaseModel
 
 from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep, owned_document
+from adaptive_rag.api.limits import require_document_quota
+from adaptive_rag.config import settings
 from adaptive_rag.ingest import jobs
 from adaptive_rag.ingest.intent import INTENT_LABELS
 from adaptive_rag.schemas import DocumentProfile, Intent
@@ -86,7 +88,13 @@ async def upload(
 
     Send `intents` with the upload to skip the intent question (FR14).
     """
-    content = await file.read()
+    # Read one byte past the limit at most: enough to know the file is too big
+    limit = settings.max_upload_mb * 1024 * 1024
+    content = await file.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE, f"File is larger than {settings.max_upload_mb} MB"
+        )
     filename = file.filename or "upload"
     try:
         file_type = files.detect_file_type(filename, content)
@@ -101,6 +109,11 @@ async def upload(
     )
     if existing is not None:  # same bytes uploaded again: reuse, don't duplicate (FR7)
         return UploadOut(document_id=existing.id, duplicate=True)
+    try:
+        require_document_quota(session, user.id)
+    except HTTPException:
+        files.delete_upload(str(path))
+        raise
 
     document = db.Document(
         owner_id=user.id,

@@ -5,6 +5,8 @@ import { type ReactNode, useEffect, useSyncExternalStore } from "react";
 
 import { getToken } from "@/lib/api";
 
+import { Loading } from "./ui";
+
 function subscribe(onChange: () => void) {
   window.addEventListener("storage", onChange); // logins/logouts in other tabs
   return () => window.removeEventListener("storage", onChange);
@@ -24,6 +26,6 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     if (loggedIn === false) router.replace("/login");
   }, [loggedIn, router]);
 
-  if (!loggedIn) return <p className="p-8 text-sm text-ink-soft">Loading…</p>;
+  if (!loggedIn) return <Loading />;
   return <>{children}</>;
 }

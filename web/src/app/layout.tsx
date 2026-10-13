@@ -17,12 +17,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col font-sans">
+      <body className="min-h-full font-sans">
         {/* The nav reads the URL, so Next.js needs a Suspense boundary around it */}
-        <Suspense fallback={<div className="h-[53px] border-b border-line bg-surface" />}>
+        <Suspense fallback={null}>
           <Nav />
         </Suspense>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+        <main className="app-main">
+          <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-10">{children}</div>
+        </main>
       </body>
     </html>
   );

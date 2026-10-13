@@ -8,7 +8,7 @@ Run all tests: `cd backend && .venv/bin/pytest -q`
 
 ## 0. The 30-second pitch
 
-> Most RAG systems push every document through one fixed pipeline: chunk, embed, vector search. That works for simple facts but fails on exact IDs and on questions about how things connect. My system profiles each document cheaply when it's uploaded and picks an indexing strategy — Vector, Hybrid (vector + keyword), or GraphRAG — then routes every question to the best index that exists for that document. It reranks, checks relevance, rewrites the query if retrieval is weak, and verifies the answer is grounded in its citations. An Evaluation Lab measures every mode on quality, latency, and cost.
+> Most RAG systems push every document through one fixed pipeline: chunk, embed, vector search. That works for simple facts but fails on exact IDs and on questions about how things connect. My system profiles each document cheaply when it's uploaded and picks an indexing strategy — Vector, Hybrid (vector + keyword), or GraphRAG — then routes every question to the best index that exists for that document. It reranks, checks relevance, rewrites the query if retrieval is weak, and verifies the answer is grounded in its citations. Every answer reports the precision and relative recall of its retrieval.
 
 ---
 
@@ -198,7 +198,26 @@ Rules (PRD FR17):
 
 ---
 
-## 13. Evaluation Lab — `data/demo_spec.yaml`, `scripts/generate_demo_docs.py`, `eval/`
+## 13. Retrieval quality on every question — `query/quality.py`
+
+The Evaluation Lab (section 13b) was removed from the app on 2026-10-12: it only scored a fixed demo corpus and was heavy to run. Quality is now measured on each real question instead.
+
+- **The problem:** a live question has no gold answer, so "which chunks are relevant" and "what did we miss" are both unknown.
+- **Relevance:** one LLM call judges numbered chunks and returns the numbers that help answer the question.
+- **Precision** = relevant chunks given to the model / chunks given to the model (top 5 after reranking).
+- **Relative recall** uses **pooling**, the method TREC search evaluations use. The pool is the chunks used plus the top 5 from every *other* mode the documents have an index for. Relative recall = relevant chunks used / relevant chunks in the pool.
+- It runs as the last pipeline node (`measure`), so its time, tokens, and cost show up with the rest. If the judge call fails, the answer is kept and the scores are shown as not measured.
+- With only one index there is no pool to compare against, so recall is reported as not measured rather than a misleading 100%.
+
+**Q: Why "relative" recall?** True recall needs every relevant chunk in the document, which nobody knows for a new question. Pooling counts only what some mode found, so it is an upper bound: a chunk every mode missed is invisible.
+
+**Q: What does it cost?** One extra LLM call per question, plus a cheap search (no reranking) with each other mode. `retrieval_quality_enabled` turns it off.
+
+**Q: Can you trust an LLM as the judge?** Not fully: it is noisy, like the grounding checker, and it was not calibrated against human labels. It is a signal for the user, not a gate; nothing in the pipeline acts on it.
+
+---
+
+## 13b. Evaluation Lab (removed; in git history) — `data/demo_spec.yaml`, `scripts/generate_demo_docs.py`, `eval/`
 
 - **Corpus:** one YAML spec of a fictional company (Nimbus Labs: 15 services, dependencies, 7 teams, policies, error codes, incidents) → 4 documents with deliberately different profiles and formats (handbook .md, security .html, architecture .docx, runbook .md) and **60 questions** in the PRD mix (12 fact, 8 keyword, 8 semantic, 12 relationship, 10 multi-hop, 5 comparison, 5 unanswerable).
 - Every fact sentence comes from one template function used by both the documents and the questions, so each question's **gold evidence** is an exact sentence. A test checks every gold sentence really sits inside one chunk — otherwise the metrics would measure nothing.
@@ -215,10 +234,9 @@ Rules (PRD FR17):
 
 ## 14. Web dashboard — `web/`
 
-- Next.js 16 App Router, TypeScript strict, Tailwind 4, Recharts. All pages are client components talking to the FastAPI API through one typed client (`lib/api.ts`, types mirroring the backend models).
+- Next.js 16 App Router, TypeScript strict, Tailwind 4. All pages are client components talking to the FastAPI API through one typed client (`lib/api.ts`, types mirroring the backend models).
 - Background work is shown by **polling** status every 2–3 s (simple, no websockets needed at this scale).
 - Next 16 with Cache Components requires a `<Suspense>` boundary around client components that read the URL (`useParams`, `useSearchParams`, `usePathname`) — the build fails otherwise.
 - React 19's lint forbids `setState` directly in effects; data loads use `useEffectEvent` (`hooks/usePolling.ts`), and the auth guard reads localStorage with `useSyncExternalStore`.
-- Charts: one fixed colour per mode across every chart, a palette validated for colour-blind separation and contrast, a single y-axis, hover tooltips, and a table view under the charts (required because three light-mode colours are below 3:1 contrast).
 
 **Q: Where is the JWT stored and what's the risk?** localStorage — simple for a demo, but readable by any injected script (XSS). Production would use an httpOnly cookie.

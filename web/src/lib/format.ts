@@ -2,12 +2,11 @@
 
 import type { DocumentStatus, Intent, Mode } from "./types";
 
-export const MODE_LABELS: Record<Mode | "router", string> = {
+export const MODE_LABELS: Record<Mode, string> = {
   vector: "Vector",
   hybrid: "Hybrid",
   graph: "Graph",
   graph_hybrid: "Graph + Hybrid",
-  router: "Router",
 };
 
 export const STRATEGY_LABELS: Record<string, string> = {
@@ -34,6 +33,11 @@ export const INTENT_LABELS: Record<Intent, string> = {
 
 export function label(map: Record<string, string>, key: string): string {
   return map[key] ?? key.replaceAll("_", " ");
+}
+
+/** "11 Oct 2026, 14:05" in the reader's own locale. */
+export function dateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 export function ms(value: number): string {

@@ -1,5 +1,6 @@
 """POST /query: run the adaptive pipeline over the user's ready documents."""
 
+import logging
 import time
 
 from fastapi import APIRouter, HTTPException, status
@@ -8,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep
+from adaptive_rag.api.limits import require_query_quota
 from adaptive_rag.llm.base import LLMError
 from adaptive_rag.models.reranker import rerank
 from adaptive_rag.query.pipeline import QueryPipeline
+from adaptive_rag.query.quality import RetrievalQuality
 from adaptive_rag.query.router import RoutingError, available_modes
 from adaptive_rag.retrieval.base import Retriever
 from adaptive_rag.retrieval.graph import GraphRetriever
@@ -20,6 +23,7 @@ from adaptive_rag.retrieval.vector import VectorRetriever
 from adaptive_rag.schemas import Citation, GraphPath, Mode, Recommendation
 from adaptive_rag.store import db
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["query"])
 
 
@@ -51,6 +55,7 @@ class QueryOut(BaseModel):
     rewrites: list[str]
     graph_paths: list[GraphPath]
     scores: Scores
+    quality: RetrievalQuality | None  # precision and relative recall; None when not measured
     regenerated: bool
     refused_reason: str
     documents: dict[str, str]  # id -> filename, for showing evidence sources
@@ -65,6 +70,7 @@ class QueryOut(BaseModel):
 @router.post("/query")
 def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     started = time.perf_counter()
+    require_query_quota(session, user.id)
     documents = _ready_documents(session, user.id, body.document_ids)
     graph = services.graph_store()
     has_bm25 = all(d.has_bm25 for d in documents)
@@ -83,8 +89,10 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     except RoutingError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
     except LLMError as error:  # the model was unreachable or could not finish an answer
+        log.warning("Query failed for user %s: %s", user.id, error)  # details stay in the log
         raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, f"The language model failed: {error}"
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "The language model failed to answer. Please try again in a moment.",
         ) from error
 
     answer, routing = state["answer"], state["routing"]
@@ -136,6 +144,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
             grounding=state["grounding_score"],
             unsupported_claims=state["unsupported_claims"],
         ),
+        quality=state["quality"],
         regenerated=state["regenerated"],
         refused_reason=state["refused_reason"],
         documents={d.id: d.filename for d in documents},

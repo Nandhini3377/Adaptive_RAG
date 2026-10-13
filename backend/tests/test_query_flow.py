@@ -203,8 +203,9 @@ def test_happy_path_answers_with_citations_and_timings():
         "evaluate",
         "generate",
         "ground",
+        "measure",
     }
-    assert meter.calls == 2  # generate + grounding (rules classified the question)
+    assert meter.calls == 3  # generate + grounding + relevance judge (rules classified it)
 
 
 def test_low_reranker_score_does_not_block_the_answer():
@@ -215,7 +216,7 @@ def test_low_reranker_score_does_not_block_the_answer():
     assert state["answer"].text == "No, sick leave is 10 days [1]."
     assert state["relevance"] < 0.05  # recorded for the Why panel, not used as a gate
     assert state["rewrites"] == []
-    assert meter.calls == 2  # answer + grounding, no rewrite
+    assert meter.calls == 3  # answer + grounding + relevance judge, no rewrite
 
 
 def test_model_finding_no_answer_rewrites_then_answers():
@@ -237,7 +238,7 @@ def test_a_repeated_rewrite_stops_the_retries():
     assert retriever.queries == ["How many leave days?", "annual leave entitlement days"]
     assert state["rewrites"] == ["annual leave entitlement days"]
     assert state["answer"].text == INSUFFICIENT_EVIDENCE
-    assert meter.calls == 4  # 2 answers + 2 rewrites, not a third search
+    assert meter.calls == 5  # 2 answers + 2 rewrites + relevance judge, not a third search
 
 
 def test_model_never_finds_an_answer_so_it_refuses_after_max_retries():
@@ -282,7 +283,8 @@ def test_failed_grounding_regenerates_once_in_strict_mode():
     state, _ = run(QueryPipeline({"vector": FixedRetriever("vector", GOOD)}, llm, keep_order))
     assert state["regenerated"] is True
     assert state["answer"].text == "Twenty days [1]."
-    assert "STRICT MODE" in llm.calls[-2][0]["content"]  # the regenerate prompt
+    # last three calls: regenerate, its grounding check, the relevance judge
+    assert "STRICT MODE" in llm.calls[-3][0]["content"]
 
 
 def test_grounding_failing_twice_refuses():

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from adaptive_rag import services
 from adaptive_rag.api.app import create_app
+from adaptive_rag.api.limits import login_limiter
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLMError
 from adaptive_rag.store import db
@@ -47,6 +48,7 @@ def client(memory_db, tmp_path, monkeypatch, llm):
         graph_store=None,  # no Neo4j in these tests
         llm=llm,
     )
+    login_limiter.clear()
     yield TestClient(create_app())
     services.reset()
 
@@ -297,3 +299,103 @@ def test_delete_removes_document_everywhere(client):
 def _user_id(email: str) -> str:
     with db.session_scope() as session:
         return session.query(db.User).filter(db.User.email == email).one().id
+
+
+# ----------------------------------------------------------------- limits
+
+
+def test_login_is_paused_after_too_many_wrong_passwords(client, monkeypatch):
+    monkeypatch.setattr(settings, "login_max_attempts", 3)
+    login(client)
+    wrong = {"email": "alice@example.com", "password": "wrong-password"}
+    for _ in range(3):
+        assert client.post("/auth/login", json=wrong).status_code == 401
+    # Even the right password is refused now: guessing cannot continue
+    right = {"email": "alice@example.com", "password": "correct-horse"}
+    assert client.post("/auth/login", json=right).status_code == 429
+    # Another account is not affected
+    assert "Authorization" in login(client, "bob@example.com")
+
+
+def test_a_correct_login_clears_the_failed_attempts(client, monkeypatch):
+    monkeypatch.setattr(settings, "login_max_attempts", 2)
+    login(client)
+    wrong = {"email": "alice@example.com", "password": "wrong-password"}
+    right = {"email": "alice@example.com", "password": "correct-horse"}
+    assert client.post("/auth/login", json=wrong).status_code == 401
+    assert client.post("/auth/login", json=right).status_code == 200
+    assert client.post("/auth/login", json=wrong).status_code == 401
+    assert client.post("/auth/login", json=right).status_code == 200
+
+
+def test_registration_can_be_switched_off(client, monkeypatch):
+    monkeypatch.setattr(settings, "registration_enabled", False)
+    body = {"email": "alice@example.com", "password": "correct-horse"}
+    assert client.post("/auth/register", json=body).status_code == 403
+
+
+def test_registration_closes_at_the_account_cap(client, monkeypatch):
+    monkeypatch.setattr(settings, "max_users", 1)
+    login(client)
+    body = {"email": "bob@example.com", "password": "correct-horse"}
+    assert client.post("/auth/register", json=body).status_code == 403
+
+
+def test_password_longer_than_72_bytes_is_a_validation_error(client):
+    """40 characters, but 80 bytes: bcrypt would crash on it."""
+    body = {"email": "alice@example.com", "password": "é" * 40}
+    assert client.post("/auth/register", json=body).status_code == 422
+
+
+def test_upload_over_the_size_limit_is_rejected(client, monkeypatch):
+    headers = login(client)
+    monkeypatch.setattr(settings, "max_upload_mb", 1)
+    # Just over 1 MB: passes the declared-size check (which allows 1 MB of slack for the
+    # form wrapping) and is stopped when the file itself is read
+    just_over = upload(client, headers, content=b"a" * (1024 * 1024 + 10))
+    assert just_over.status_code == 413
+    # Far over: turned away from its declared size alone
+    far_over = upload(client, headers, content=b"a" * (3 * 1024 * 1024))
+    assert far_over.status_code == 413
+    assert client.get("/documents", headers=headers).json() == []
+
+
+def test_document_quota_stops_new_uploads_but_not_duplicates(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "max_documents_per_user", 1)
+    headers = login(client)
+    first = upload(client, headers).json()
+    second = upload(client, headers, name="other.md", content=b"# Other\n\nDifferent text.")
+    assert second.status_code == 429
+    assert len(list((tmp_path / "uploads").rglob("*.md"))) == 1  # rejected file not kept
+    again = upload(client, headers).json()
+    assert again == {"document_id": first["document_id"], "duplicate": True}
+
+
+def test_daily_question_quota(client, monkeypatch):
+    monkeypatch.setattr(settings, "max_queries_per_day", 1)
+    headers = login(client)
+    upload_ready(client, headers)
+    question = {"question": "How many leave days?"}
+    assert client.post("/query", json=question, headers=headers).status_code == 200
+    assert client.post("/query", json=question, headers=headers).status_code == 429
+
+
+def test_model_failure_details_are_not_shown_to_the_user(client, llm):
+    headers = login(client)
+    upload_ready(client, headers)
+
+    def model_down(_messages):
+        raise LLMError("Sarvam call failed: internal-host-10.0.0.5 refused")
+
+    llm.reply = model_down
+    response = client.post("/query", json={"question": "How many leave days?"}, headers=headers)
+    assert response.status_code == 503
+    assert "internal-host" not in response.text
+
+
+def test_api_docs_can_be_switched_off(client, monkeypatch):
+    assert client.get("/docs").status_code == 200
+    monkeypatch.setattr(settings, "api_docs_enabled", False)
+    private = TestClient(create_app())
+    assert private.get("/docs").status_code == 404
+    assert private.get("/openapi.json").status_code == 404
