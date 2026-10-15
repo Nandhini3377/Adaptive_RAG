@@ -19,8 +19,9 @@ from adaptive_rag.retrieval.base import Retriever
 from adaptive_rag.retrieval.graph import GraphRetriever
 from adaptive_rag.retrieval.graph_hybrid import GraphHybridRetriever
 from adaptive_rag.retrieval.hybrid import HybridRetriever
+from adaptive_rag.retrieval.keyword import KeywordRetriever
 from adaptive_rag.retrieval.vector import VectorRetriever
-from adaptive_rag.schemas import Citation, GraphPath, Mode, Recommendation
+from adaptive_rag.schemas import Citation, GraphPath, Index, Mode, Recommendation
 from adaptive_rag.store import db
 
 log = logging.getLogger(__name__)
@@ -72,18 +73,16 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     started = time.perf_counter()
     require_query_quota(session, user.id)
     documents = _ready_documents(session, user.id, body.document_ids)
-    graph = services.graph_store()
-    has_bm25 = all(d.has_bm25 for d in documents)
-    has_graph = graph is not None and all(d.graph_status == "ready" for d in documents)
+    graph_up = services.graph_store() is not None
+    indexes = frozenset.intersection(*(document_indexes(d, graph_up) for d in documents))
 
-    pipeline = QueryPipeline(retrievers_for(has_bm25, has_graph), services.llm(), rerank)
+    pipeline = QueryPipeline(retrievers_for(indexes), services.llm(), rerank)
     try:
         state, meter = pipeline.run(
             body.question,
             user.id,
             [d.id for d in documents],
-            has_bm25=has_bm25,
-            has_graph=has_graph,
+            indexes=indexes,
             requested_mode=body.mode,
         )
     except RoutingError as error:
@@ -157,32 +156,45 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     )
 
 
-def retrievers_for(has_bm25: bool, has_graph: bool) -> dict[Mode, Retriever]:
+def document_indexes(document: db.Document, graph_up: bool) -> frozenset[Index]:
+    """The indexes one document can be searched with right now."""
+    built: set[Index] = set()
+    if document.has_vector:
+        built.add("vector")
+    if document.has_bm25:
+        built.add("bm25")
+    if graph_up and document.graph_status == "ready":
+        built.add("graph")
+    return frozenset(built)
+
+
+def retrievers_for(indexes: set[Index] | frozenset[Index]) -> dict[Mode, Retriever]:
     """Only the retrievers whose indexes exist (the router never picks others)."""
-    vectors = services.vector_store()
-    hybrid = HybridRetriever(vectors, services.bm25_store())
-    built: dict[Mode, Retriever] = {"vector": VectorRetriever(vectors), "hybrid": hybrid}
-    graph_store = services.graph_store()
+    allowed = available_modes(indexes)
+    vectors, bm25 = services.vector_store(), services.bm25_store()
+    hybrid = HybridRetriever(vectors, bm25)
+    built: dict[Mode, Retriever] = {
+        "vector": VectorRetriever(vectors),
+        "keyword": KeywordRetriever(bm25),
+        "hybrid": hybrid,
+    }
+    graph_store = services.graph_store() if "graph" in indexes else None
     if graph_store is not None:
         graph = GraphRetriever(graph_store)
         built["graph"] = graph
         built["graph_hybrid"] = GraphHybridRetriever(graph, hybrid)
-    allowed = available_modes(has_bm25, has_graph)
     return {mode: retriever for mode, retriever in built.items() if mode in allowed}
 
 
 def _missing_index(
     documents: list[db.Document], recommendation: Recommendation | None
 ) -> list[str]:
-    """Which of the searched documents the recommended index would be built for."""
+    """Which of the searched documents the recommended indexes would be built for."""
     if recommendation is None:
         return []
-    needs_graph = "graph" in recommendation.index_to_build
-    return [
-        d.id
-        for d in documents
-        if (needs_graph and d.graph_status != "ready") or (not needs_graph and not d.has_bm25)
-    ]
+    needed = set(recommendation.index_to_build.split("+"))
+    graph_up = services.graph_store() is not None
+    return [d.id for d in documents if needed - document_indexes(d, graph_up)]
 
 
 def _ready_documents(

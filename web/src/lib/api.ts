@@ -98,7 +98,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ intents, skip }),
     }),
-  buildIndex: (id: string, index: "bm25" | "graph" | "bm25+graph") =>
+  buildIndex: (id: string, index: string) =>
     request<DocumentOut>(`/documents/${id}/build-index`, {
       method: "POST",
       body: JSON.stringify({ index }),

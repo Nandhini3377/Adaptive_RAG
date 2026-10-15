@@ -18,8 +18,9 @@ from adaptive_rag.ingest.parser import parse_file
 from adaptive_rag.ingest.sampler import analyze_sample
 from adaptive_rag.ingest.scanner import group_sections, scan
 from adaptive_rag.ingest.selector import decide
+from adaptive_rag.ingest.strategy_llm import combine, llm_strategy
 from adaptive_rag.llm.base import LLMError
-from adaptive_rag.schemas import Chunk, DocumentProfile, Intent
+from adaptive_rag.schemas import INDEX_ORDER, MODE_INDEXES, Chunk, DocumentProfile, Intent
 from adaptive_rag.store import db
 
 log = logging.getLogger(__name__)
@@ -109,17 +110,35 @@ def apply_intent(document_id: str, intents: list[Intent] | None) -> None:
 
 
 def _decide(document_id: str, intents: list[Intent] | None) -> None:
-    """Run the strategy decision on the saved analysis and store it on the document."""
+    """Rules and LLM each pick a strategy; store the combined decision on the document."""
     with db.session_scope() as session:
         analysis = session.get(db.DocumentAnalysis, document_id)
         if analysis is None:
             raise ValueError("Document has not been analyzed yet")
         profile = DocumentProfile.model_validate(analysis.raw_features["profile"])
-        decision = decide(profile, intents)
+
+    set_status(document_id, "indexing", 62, "Deciding the strategy")
+    by_rules = decide(profile, intents)
+    by_llm = llm_strategy(profile, intents, services.llm())
+    decision = combine(by_rules, by_llm)
+
+    with db.session_scope() as session:
+        analysis = session.get(db.DocumentAnalysis, document_id)
+        assert analysis is not None
         analysis.user_intents = list(intents) if intents else None
         analysis.recommended_strategy = decision.strategy
         analysis.confidence = decision.confidence
         analysis.reason = " ".join(filter(None, [decision.reason, decision.warning]))
+        analysis.raw_features = {
+            **analysis.raw_features,
+            "decision": {
+                "rules": decision.rules_strategy,
+                "llm": decision.llm_strategy,
+                "llm_reason": decision.llm_reason,
+                "suggested_indexes": decision.suggested_indexes,
+                "llm_cost_inr": by_llm.cost_inr if by_llm else 0.0,
+            },
+        }
         document = session.get(db.Document, document_id)
         assert document is not None
         document.strategy = decision.strategy
@@ -129,13 +148,14 @@ def _decide(document_id: str, intents: list[Intent] | None) -> None:
 
 @_fail_on_error
 def index_document(document_id: str) -> None:
-    """Chunk and embed; add BM25 for hybrid, and the graph for graph_hybrid."""
-    chunks, owner_id, strategy = _chunk_and_embed(document_id)
-    if strategy in ("hybrid", "graph_hybrid"):
-        _build_bm25(document_id, chunks)
-    if strategy == "graph_hybrid":
-        set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
-        _build_graph(document_id, owner_id, chunks)
+    """Build exactly the indexes the decided strategy searches (see MODE_INDEXES)."""
+    chunks, owner_id, strategy = _chunk(document_id)
+    indexes = set(MODE_INDEXES[strategy])  # type: ignore[index]
+    if "graph" in indexes and services.graph_store() is None and indexes == {"graph"}:
+        # Graph only, but Neo4j is down: nothing would be searchable. Use the safe default.
+        indexes = {"vector", "bm25"}
+        _note(document_id, "Graph not built: Neo4j is not running, so hybrid was built instead.")
+    _build(document_id, owner_id, chunks, indexes)
     set_status(document_id, "ready", 100, "Ready")
 
 
@@ -148,15 +168,13 @@ def index_lab_snippet(document_id: str) -> None:
     """
     _analyze(document_id)
     _decide(document_id, None)
-    chunks, owner_id, _strategy = _chunk_and_embed(document_id)
-    _build_bm25(document_id, chunks)
-    set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
-    _build_graph(document_id, owner_id, chunks)
+    chunks, owner_id, _strategy = _chunk(document_id)
+    _build(document_id, owner_id, chunks, set(INDEX_ORDER))
     set_status(document_id, "ready", 100, "Ready")
 
 
-def _chunk_and_embed(document_id: str) -> tuple[list[Chunk], str, str]:
-    """Chunk the file, embed into Qdrant, and keep the text in SQLite.
+def _chunk(document_id: str) -> tuple[list[Chunk], str, str]:
+    """Chunk the file and keep the text in SQLite (every index and citation reads it).
 
     Returns (chunks, owner_id, strategy).
     """
@@ -167,28 +185,69 @@ def _chunk_and_embed(document_id: str) -> tuple[list[Chunk], str, str]:
 
     set_status(document_id, "indexing", 65, "Chunking")
     chunks = chunk_elements(parse_file(path), document_id=document_id, owner_id=owner_id)
-
-    set_status(document_id, "indexing", 75, f"Embedding {len(chunks)} chunks")
-    services.vector_store().add_chunks(chunks)
     with db.session_scope() as session:
         db.save_chunks(session, chunks)
     return chunks, owner_id, strategy
 
 
+def _build(document_id: str, owner_id: str, chunks: list[Chunk], indexes: set[str]) -> None:
+    """Build the given indexes, cheapest first."""
+    if "vector" in indexes:
+        set_status(document_id, "indexing", 75, f"Embedding {len(chunks)} chunks")
+        _build_vector(document_id, chunks)
+    if "bm25" in indexes:
+        _build_bm25(document_id, chunks)
+    if "graph" in indexes:
+        set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
+        _build_graph(document_id, owner_id, chunks)
+
+
 @_fail_on_error
 def build_index(document_id: str, index: str) -> None:
-    """Manual upgrade from a recommendation: add BM25, the graph, or both (FR20)."""
+    """Add indexes later, from a suggestion or recommendation: e.g. 'vector', 'bm25+graph'."""
     with db.session_scope() as session:
         document = session.get(db.Document, document_id)
         assert document is not None
         owner_id = document.owner_id
         chunks = db.load_chunks(session, document_id)
     set_status(document_id, "indexing", 50, f"Building {index}")
-    if "bm25" in index:
-        _build_bm25(document_id, chunks)
-    if "graph" in index:
-        _build_graph(document_id, owner_id, chunks)
+    _build(document_id, owner_id, chunks, set(index.split("+")))
+    _drop_built_suggestions(document_id)
     set_status(document_id, "ready", 100, "Ready")
+
+
+def _build_vector(document_id: str, chunks: list[Chunk]) -> None:
+    services.vector_store().add_chunks(chunks)
+    with db.session_scope() as session:
+        document = session.get(db.Document, document_id)
+        if document is not None:
+            document.has_vector = True
+
+
+def _note(document_id: str, text: str) -> None:
+    with db.session_scope() as session:
+        document = session.get(db.Document, document_id)
+        if document is not None:
+            document.strategy_reason += f" ({text})"
+
+
+def _drop_built_suggestions(document_id: str) -> None:
+    """A suggested index that now exists is no longer a suggestion."""
+    with db.session_scope() as session:
+        document = session.get(db.Document, document_id)
+        analysis = session.get(db.DocumentAnalysis, document_id)
+        if document is None or analysis is None or "decision" not in analysis.raw_features:
+            return
+        built = {
+            "vector": document.has_vector,
+            "bm25": document.has_bm25,
+            "graph": document.graph_status == "ready",
+        }
+        decision = dict(analysis.raw_features["decision"])
+        decision["suggested_indexes"] = [
+            index for index in decision.get("suggested_indexes", []) if not built.get(index)
+        ]
+        analysis.raw_features = {**analysis.raw_features, "decision": decision}
 
 
 def _build_bm25(document_id: str, chunks: list[Chunk]) -> None:
@@ -207,7 +266,7 @@ def _build_graph(document_id: str, owner_id: str, chunks: list[Chunk]) -> None:
             document = session.get(db.Document, document_id)
             if document is not None:
                 document.graph_status = "candidate"
-                document.strategy_reason += " (Graph not built: Neo4j is not running.)"
+        _note(document_id, "Graph not built: Neo4j is not running.")
         return
     _set_graph_status(document_id, "building")
     extraction = extract_graph(chunks, services.llm())

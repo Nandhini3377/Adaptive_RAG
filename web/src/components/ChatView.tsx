@@ -6,7 +6,7 @@ import { type FormEvent, Fragment, type KeyboardEvent, useEffect, useRef, useSta
 
 import { api } from "@/lib/api";
 import { MODE_LABELS, STRATEGY_LABELS, inr, label, ms, pct } from "@/lib/format";
-import type { DocumentOut, Mode, QueryOut } from "@/lib/types";
+import { type DocumentOut, type IndexName, MODE_INDEXES, type Mode, type QueryOut } from "@/lib/types";
 
 import {
   ArrowRightIcon,
@@ -31,7 +31,7 @@ interface Turn {
   error?: string;
 }
 
-const MODES: (Mode | "auto")[] = ["auto", "vector", "hybrid", "graph", "graph_hybrid"];
+const MODES: (Mode | "auto")[] = ["auto", "vector", "keyword", "hybrid", "graph", "graph_hybrid"];
 
 // One example per question type: a fact, an exact code, a relationship
 const EXAMPLES = [
@@ -67,19 +67,18 @@ export function ChatView() {
   }, [turns.length]);
 
   const ready = documents ?? [];
-  // Same rule as the backend (router.available_modes): vector always works; the other
-  // modes need their index on every document being searched.
+  // Same rule as the backend (router.available_modes): a mode needs all its indexes on
+  // every document being searched.
   const searched = selected.length ? ready.filter((d) => selected.includes(d.id)) : ready;
-  const hasBm25 = searched.length > 0 && searched.every((d) => d.has_bm25);
-  const hasGraph = searched.length > 0 && searched.every((d) => d.graph_status === "ready");
-  const modes = MODES.filter(
-    (m) =>
-      m === "auto" ||
-      m === "vector" ||
-      (m === "hybrid" && hasBm25) ||
-      (m === "graph" && hasGraph) ||
-      (m === "graph_hybrid" && hasBm25 && hasGraph),
+  const built = (doc: DocumentOut): IndexName[] => [
+    ...(doc.has_vector ? (["vector"] as const) : []),
+    ...(doc.has_bm25 ? (["bm25"] as const) : []),
+    ...(doc.graph_status === "ready" ? (["graph"] as const) : []),
+  ];
+  const shared = (["vector", "bm25", "graph"] as IndexName[]).filter(
+    (index) => searched.length > 0 && searched.every((doc) => built(doc).includes(index)),
   );
+  const modes = MODES.filter((m) => m === "auto" || MODE_INDEXES[m].every((index) => shared.includes(index)));
   // A mode that stops existing (after changing the documents) falls back to automatic
   const activeMode = modes.includes(mode) ? mode : "auto";
 

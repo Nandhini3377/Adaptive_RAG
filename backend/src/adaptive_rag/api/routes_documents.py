@@ -1,7 +1,7 @@
 """Upload, analyze, choose intent, build indexes, list, inspect, and delete documents."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -12,7 +12,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from adaptive_rag import services
@@ -25,6 +25,9 @@ from adaptive_rag.schemas import DocumentProfile, Intent
 from adaptive_rag.store import db, files
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# One or more of vector, bm25, graph joined with "+", e.g. "vector+bm25"
+_INDEX_PATTERN = r"^(vector|bm25|graph)(\+(vector|bm25|graph)){0,2}$"
 
 
 class UploadOut(BaseModel):
@@ -42,6 +45,7 @@ class DocumentOut(BaseModel):
     error: str
     strategy: str
     strategy_reason: str
+    has_vector: bool
     has_bm25: bool
     graph_status: str
     created_at: datetime
@@ -66,6 +70,10 @@ class AnalysisOut(BaseModel):
     strategy: str | None
     confidence: float | None
     reason: str
+    rules_strategy: str | None = None  # the fixed rules' pick
+    llm_strategy: str | None = None  # the LLM's pick; None if it was not asked or failed
+    llm_reason: str = ""
+    suggested_indexes: list[str] = []  # wanted by one side, not built: offered to the user
 
 
 class IntentIn(BaseModel):
@@ -74,7 +82,7 @@ class IntentIn(BaseModel):
 
 
 class BuildIndexIn(BaseModel):
-    index: Literal["bm25", "graph", "bm25+graph"]
+    index: str = Field(pattern=_INDEX_PATTERN)  # e.g. "vector", "bm25+graph"
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
@@ -153,6 +161,7 @@ def get_analysis(document_id: str, user: UserDep, session: SessionDep) -> Analys
     if analysis is None:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Analysis not ready ({document.status})")
     suggested = set(analysis.suggested_intents)
+    decision = analysis.raw_features.get("decision", {})
     return AnalysisOut(
         status=document.status,
         profile=DocumentProfile.model_validate(analysis.raw_features["profile"]),
@@ -165,6 +174,10 @@ def get_analysis(document_id: str, user: UserDep, session: SessionDep) -> Analys
         strategy=analysis.recommended_strategy or None,
         confidence=analysis.confidence if analysis.recommended_strategy else None,
         reason=analysis.reason,
+        rules_strategy=decision.get("rules"),
+        llm_strategy=decision.get("llm"),
+        llm_reason=decision.get("llm_reason", ""),
+        suggested_indexes=decision.get("suggested_indexes", []),
     )
 
 
@@ -195,7 +208,7 @@ def build_index(
     session: SessionDep,
     background: BackgroundTasks,
 ) -> DocumentOut:
-    """Add the keyword index and/or the graph, usually from a recommendation (FR20)."""
+    """Add indexes later, from a suggestion or a recommendation (FR20)."""
     document = owned_document(session, user, document_id)
     if document.status != "ready":
         raise HTTPException(status.HTTP_409_CONFLICT, f"Document is {document.status}")

@@ -9,7 +9,17 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Engine, ForeignKey, String, Text, create_engine, event
+from sqlalchemy import (
+    JSON,
+    Engine,
+    ForeignKey,
+    String,
+    Text,
+    create_engine,
+    event,
+    inspect,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -57,6 +67,7 @@ class Document(Base):
     strategy: Mapped[str] = mapped_column(String(20), default="")
     strategy_reason: Mapped[str] = mapped_column(Text, default="")
     # Which indexes exist: the router only uses these
+    has_vector: Mapped[bool] = mapped_column(default=False)
     has_bm25: Mapped[bool] = mapped_column(default=False)
     # none | candidate | building | ready
     graph_status: Mapped[str] = mapped_column(String(20), default="none")
@@ -203,7 +214,19 @@ def make_engine(url: str | None = None) -> Engine:
     else:
         engine = create_engine(url)
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     return engine
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """create_all makes new tables but never changes old ones: add columns added later."""
+    columns = {column["name"] for column in inspect(engine).get_columns("documents")}
+    if "has_vector" not in columns:
+        # Every document indexed before this column existed was embedded
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE documents ADD COLUMN has_vector BOOLEAN NOT NULL DEFAULT TRUE")
+            )
 
 
 _engine: Engine | None = None

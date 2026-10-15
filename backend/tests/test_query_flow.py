@@ -7,9 +7,9 @@ from adaptive_rag.query.answer import INSUFFICIENT_EVIDENCE
 from adaptive_rag.query.classifier import classify, classify_by_rules
 from adaptive_rag.query.correction import check_grounding, needs_retry, relevance_score
 from adaptive_rag.query.pipeline import QueryPipeline
-from adaptive_rag.query.router import RoutingError, route
+from adaptive_rag.query.router import RoutingError, available_modes, route
 from adaptive_rag.retrieval.base import Retriever
-from adaptive_rag.schemas import Answer, Chunk, Citation, RetrievalResult, SearchHit
+from adaptive_rag.schemas import MODE_INDEXES, Answer, Chunk, Citation, RetrievalResult, SearchHit
 from tests.conftest import FakeLLM
 
 # ------------------------------------------------------------- classifier
@@ -61,8 +61,14 @@ def test_confident_rules_never_call_the_llm():
     [  # PRD FR26 table: built indexes x ideal mode -> mode used + recommendation
         ("vector", "fact_lookup", "vector", None),
         ("vector", "keyword", "vector", "bm25"),
-        ("vector", "relationship", "vector", "bm25+graph"),
+        ("vector", "relationship", "vector", "graph"),
         ("vector", "comparison", "vector", "bm25+graph"),
+        ("keyword", "fact_lookup", "keyword", "vector"),
+        ("keyword", "keyword", "keyword", "vector"),
+        ("keyword", "relationship", "keyword", "graph"),
+        ("graph", "relationship", "graph", None),
+        ("graph", "fact_lookup", "graph", "vector"),
+        ("graph", "comparison", "graph", "vector+bm25"),
         ("hybrid", "fact_lookup", "vector", None),
         ("hybrid", "keyword", "hybrid", None),
         ("hybrid", "relationship", "hybrid", "graph"),
@@ -73,9 +79,7 @@ def test_confident_rules_never_call_the_llm():
     ],
 )
 def test_routing_table(built, query_type, used, build):
-    has_bm25 = built in ("hybrid", "graph_hybrid")
-    has_graph = built == "graph_hybrid"
-    decision = route(query_type, has_bm25, has_graph)
+    decision = route(query_type, MODE_INDEXES[built])
     assert decision.mode == used
     if build is None:
         assert decision.recommendation is None
@@ -85,9 +89,21 @@ def test_routing_table(built, query_type, used, build):
 
 
 def test_manual_mode_override_and_its_limits():
-    assert route("fact_lookup", True, False, requested="hybrid").mode == "hybrid"
+    assert route("fact_lookup", {"vector", "bm25"}, requested="hybrid").mode == "hybrid"
     with pytest.raises(RoutingError):
-        route("fact_lookup", False, False, requested="graph")
+        route("fact_lookup", {"vector"}, requested="graph")
+
+
+def test_documents_sharing_no_index_cannot_be_searched_together():
+    with pytest.raises(RoutingError, match="share no search index"):
+        route("fact_lookup", set())
+
+
+def test_available_modes_follow_the_built_indexes():
+    assert available_modes({"bm25"}) == {"keyword"}
+    assert available_modes({"vector", "bm25"}) == {"vector", "keyword", "hybrid"}
+    assert available_modes({"graph"}) == {"graph"}
+    assert available_modes(MODE_INDEXES["graph_hybrid"]) == set(MODE_INDEXES)
 
 
 # --------------------------------------------------------- self-correction
@@ -183,7 +199,7 @@ BAD = hits(0.01, 0.0)
 
 
 def run(pipeline, question="How many leave days?", **kwargs):
-    options = {"has_bm25": True, "has_graph": False, **kwargs}
+    options = {"indexes": {"vector", "bm25"}, **kwargs}
     return pipeline.run(question, "u", ["d"], **options)
 
 

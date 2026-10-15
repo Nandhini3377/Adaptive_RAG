@@ -17,7 +17,7 @@ from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep
 from adaptive_rag.api.limits import require_query_quota
 from adaptive_rag.api.routes_documents import DocumentOut, remove_document
-from adaptive_rag.api.routes_query import retrievers_for
+from adaptive_rag.api.routes_query import document_indexes, retrievers_for
 from adaptive_rag.config import settings
 from adaptive_rag.ingest import jobs
 from adaptive_rag.llm.base import LLMError
@@ -26,7 +26,7 @@ from adaptive_rag.models.reranker import rerank
 from adaptive_rag.query.classifier import classify
 from adaptive_rag.query.quality import ModeQuality, compare_modes, search_mode
 from adaptive_rag.query.router import route
-from adaptive_rag.schemas import SearchHit
+from adaptive_rag.schemas import MODE_INDEXES, Index, QueryType, RoutingDecision, SearchHit
 from adaptive_rag.store import db
 
 router = APIRouter(prefix="/lab", tags=["lab"])
@@ -44,6 +44,8 @@ class LabOut(BaseModel):
     strategy: str | None  # what the analysis would build for a normal upload
     confidence: float | None
     reason: str
+    rules_strategy: str | None  # the two picks the decision combined
+    llm_strategy: str | None
     modes: list[str]  # modes searchable now (every index that was built)
 
 
@@ -67,6 +69,8 @@ class LabQueryOut(BaseModel):
     classified_by: str
     strategy: str  # the analysis's pick: which indexes a normal upload would have
     adaptive_mode: str  # the mode Adaptive RAG would use, given only those indexes
+    # Mode each decider alone would have led to: {"final": ..., "rules": ..., "llm": ...}
+    picks: dict[str, str]
     ideal_mode: str  # the router's choice if every index existed
     routing_reason: str
     best_modes: list[str]  # most relevant chunks found (ties share); empty if none found any
@@ -147,21 +151,23 @@ def lab_query(body: LabQueryIn, user: UserDep, session: SessionDep) -> LabQueryO
     if document is None or document.status != "ready":
         raise HTTPException(status.HTTP_409_CONFLICT, "Add a snippet and wait until it is ready")
     analysis = session.get(db.DocumentAnalysis, document.id)
-    strategy = (analysis.recommended_strategy if analysis else "") or "vector"
+    strategy = (analysis.recommended_strategy if analysis else "") or "hybrid"
+    decision = analysis.raw_features.get("decision", {}) if analysis else {}
+    deciders = {"final": strategy, "rules": decision.get("rules"), "llm": decision.get("llm")}
 
-    has_bm25 = document.has_bm25
-    has_graph = document.graph_status == "ready" and services.graph_store() is not None
+    built = document_indexes(document, services.graph_store() is not None)
     meter = MeteredLLM(services.llm())
     try:
         classification = classify(body.question, meter)
-        # What Adaptive RAG would do with only the indexes its analysis picked
-        adaptive = route(
-            classification.query_type,
-            has_bm25=strategy in ("hybrid", "graph_hybrid"),
-            has_graph=strategy == "graph_hybrid" and has_graph,
-        )
+        # What Adaptive RAG would do with only the indexes its decision built
+        adaptive = _route_for(classification.query_type, strategy, built)
+        picks = {
+            name: _route_for(classification.query_type, pick, built).mode
+            for name, pick in deciders.items()
+            if pick in MODE_INDEXES
+        }
         results: dict[str, list[SearchHit]] = {}
-        for mode, retriever in retrievers_for(has_bm25, has_graph).items():
+        for mode, retriever in retrievers_for(built).items():
             results[mode] = search_mode(
                 retriever, body.question, body.question, user.id, [document.id], rerank
             )
@@ -208,6 +214,7 @@ def lab_query(body: LabQueryIn, user: UserDep, session: SessionDep) -> LabQueryO
         classified_by=classification.source,
         strategy=strategy,
         adaptive_mode=adaptive.mode,
+        picks=picks,
         ideal_mode=adaptive.ideal_mode,
         routing_reason=adaptive.reason,
         best_modes=best_modes(comparison.modes),
@@ -229,6 +236,12 @@ def best_modes(modes: list[ModeQuality]) -> list[str]:
     """
     most = max((m.relevant for m in modes), default=0)
     return [m.mode for m in modes if m.relevant == most] if most else []
+
+
+def _route_for(query_type: QueryType, strategy: str, built: frozenset[Index]) -> RoutingDecision:
+    """The routing a normal upload with this strategy would get (only indexes really built)."""
+    indexes = MODE_INDEXES[strategy] & built  # type: ignore[index]
+    return route(query_type, indexes or built)
 
 
 def _lab_document(session: Session, owner_id: str) -> db.Document | None:
@@ -257,14 +270,15 @@ def _lab_out(session: Session, document: db.Document) -> LabOut:
             text = file.read()
     except OSError:
         text = ""
-    has_graph = document.graph_status == "ready" and services.graph_store() is not None
+    built = document_indexes(document, services.graph_store() is not None)
+    decision = analysis.raw_features.get("decision", {}) if analysis else {}
     return LabOut(
         document=DocumentOut.of(document),
         text=text,
         strategy=analysis.recommended_strategy if decided else None,
         confidence=analysis.confidence if decided else None,
         reason=analysis.reason if decided else "",
-        modes=list(retrievers_for(document.has_bm25, has_graph))
-        if document.status == "ready"
-        else [],
+        rules_strategy=decision.get("rules"),
+        llm_strategy=decision.get("llm"),
+        modes=list(retrievers_for(built)) if document.status == "ready" else [],
     )

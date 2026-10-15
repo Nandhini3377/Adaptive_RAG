@@ -14,6 +14,12 @@ import { Badge, Button, Card, ErrorBox, Loading, PageHeader, ProgressBar, Sectio
 // Same limit as the backend (settings.lab_max_chars)
 const MAX_CHARS = 8000;
 const BUSY = new Set(["scanning", "indexing"]);
+// Whose pick led to which mode: the built overlap, and each decider on its own
+const DECIDERS = [
+  { key: "final", name: "Built overlap" },
+  { key: "rules", name: "Rules alone" },
+  { key: "llm", name: "LLM alone" },
+] as const;
 
 /**
  * Evaluation Lab: a short text is indexed in every mode (normal uploads build only the one
@@ -229,6 +235,13 @@ function SnippetStatus({ lab }: { lab: LabOut }) {
           <span className="font-semibold text-ink">{label(STRATEGY_LABELS, lab.strategy ?? "")}</span>
           {lab.confidence != null && <Badge>confidence {pct(lab.confidence)}</Badge>}
         </div>
+        {lab.rules_strategy && (
+          <p className="mt-1.5 text-xs text-ink-soft">
+            Rules picked <span className="text-ink">{label(STRATEGY_LABELS, lab.rules_strategy)}</span> · LLM picked{" "}
+            <span className="text-ink">{lab.llm_strategy ? label(STRATEGY_LABELS, lab.llm_strategy) : "not available"}</span>{" "}
+            · the overlap is built
+          </p>
+        )}
         {lab.reason && <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{lab.reason}</p>}
       </div>
       <div>
@@ -271,7 +284,7 @@ function LabResult({ result }: { result: LabQueryOut }) {
           Adaptive RAG would use <strong>{picked}</strong>{" "}
           <span className="text-ink-soft">
             ({label({}, result.query_type)} question, {result.classified_by === "rules" ? "classified by rules" : "classified by the LLM"};
-            the analysis built {label(STRATEGY_LABELS, result.strategy)})
+            the decision built {label(STRATEGY_LABELS, result.strategy)})
           </span>
         </p>
         <p className="mt-1 flex items-center gap-1.5 font-medium">
@@ -280,7 +293,7 @@ function LabResult({ result }: { result: LabQueryOut }) {
           ) : right ? (
             <>
               <CheckIcon className="text-good" />
-              <span className="text-good">That was the best mode for this question.</span>
+              <span className="text-good">That was a best mode for this question.</span>
             </>
           ) : (
             <span className="text-warn">
@@ -288,6 +301,21 @@ function LabResult({ result }: { result: LabQueryOut }) {
             </span>
           )}
         </p>
+        {!nothing && (result.picks.rules || result.picks.llm) && (
+          <ul className="mt-3 space-y-1 border-t border-line/60 pt-3 text-xs">
+            {DECIDERS.filter(({ key }) => result.picks[key]).map(({ key, name }) => {
+              const mode = result.picks[key]!;
+              const ok = result.best_modes.includes(mode);
+              return (
+                <li key={key} className="flex flex-wrap items-center gap-1.5">
+                  <span className="w-28 text-ink-soft">{name}</span>
+                  <span className="text-ink">{label(MODE_LABELS, mode)}</span>
+                  <Badge tone={ok ? "good" : "warn"}>{ok ? "best" : "not best"}</Badge>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <ModeComparison modes={result.modes} usedLabel="Adaptive pick" best={result.best_modes} />

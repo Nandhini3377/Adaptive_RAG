@@ -45,6 +45,7 @@ from adaptive_rag.schemas import (
     Answer,
     Classification,
     GraphPath,
+    Index,
     Mode,
     RoutingDecision,
     SearchHit,
@@ -58,8 +59,7 @@ class QueryState(TypedDict, total=False):
     question: str
     owner_id: str
     document_ids: list[str]
-    has_bm25: bool
-    has_graph: bool
+    indexes: frozenset[Index]  # indexes every searched document has
     requested_mode: Mode | None
     # decisions
     classification: Classification
@@ -98,8 +98,7 @@ class QueryPipeline:
         question: str,
         owner_id: str,
         document_ids: list[str],
-        has_bm25: bool,
-        has_graph: bool,
+        indexes: set[Index] | frozenset[Index],
         requested_mode: Mode | None = None,
     ) -> tuple[QueryState, MeteredLLM]:
         """Answer one question; returns the final state and the query's LLM usage."""
@@ -110,8 +109,7 @@ class QueryPipeline:
                 "question": question,
                 "owner_id": owner_id,
                 "document_ids": document_ids,
-                "has_bm25": has_bm25,
-                "has_graph": has_graph,
+                "indexes": frozenset(indexes),
                 "requested_mode": requested_mode,
                 "search_query": question,
                 "rewrites": [],
@@ -146,8 +144,7 @@ class QueryPipeline:
         def route_step(state: QueryState) -> dict[str, Any]:
             decision = route(
                 state["classification"].query_type,
-                state["has_bm25"],
-                state["has_graph"],
+                state["indexes"],
                 state["requested_mode"],
             )
             return {"routing": decision}

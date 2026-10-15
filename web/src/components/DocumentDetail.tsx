@@ -5,7 +5,7 @@ import { type ReactNode, useCallback, useState } from "react";
 
 import { useOnMount, usePolling } from "@/hooks/usePolling";
 import { ApiError, api } from "@/lib/api";
-import { INTENT_LABELS, STRATEGY_LABELS, dateTime, inr, label, num, pct } from "@/lib/format";
+import { INTENT_LABELS, STRATEGY_LABELS, dateTime, indexesLabel, inr, label, num, pct } from "@/lib/format";
 import type { AnalysisOut, DocumentOut, DocumentStatus, Intent } from "@/lib/types";
 
 import { ChatIcon, CheckIcon, GraphIcon, HashIcon, LayersIcon, TrashIcon } from "./icons";
@@ -160,6 +160,18 @@ export function DocumentDetail() {
                   <span className="text-xs text-ink-soft">Confidence</span>
                 </div>
                 <div className="min-w-0">
+                  {analysis.rules_strategy && (
+                    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-ink-soft">Rules picked</span>
+                        <Badge>{label(STRATEGY_LABELS, analysis.rules_strategy)}</Badge>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-ink-soft">LLM picked</span>
+                        <Badge>{analysis.llm_strategy ? label(STRATEGY_LABELS, analysis.llm_strategy) : "Not available"}</Badge>
+                      </span>
+                    </div>
+                  )}
                   <p className="text-sm leading-relaxed text-ink">{analysis.reason}</p>
                   <div className="mt-3 flex flex-wrap items-center gap-1.5">
                     <span className="text-xs text-ink-soft">Your intents</span>
@@ -171,6 +183,24 @@ export function DocumentDetail() {
                   </div>
                 </div>
               </div>
+              {document.status === "ready" && analysis.suggested_indexes.length > 0 && (
+                <div className="mt-5 rounded-xl border border-warn/30 bg-warn/8 p-3.5 text-sm">
+                  <p className="text-ink">
+                    Not built, because only one side wanted it: the{" "}
+                    <strong>{indexesLabel(analysis.suggested_indexes)}</strong>. Add it if answers aren&apos;t good
+                    enough.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    disabled={busy}
+                    onClick={() => act(() => api.buildIndex(id, analysis.suggested_indexes.join("+")))}
+                  >
+                    Add {indexesLabel(analysis.suggested_indexes)}
+                  </Button>
+                </div>
+              )}
             </Card>
           )}
 
@@ -235,7 +265,14 @@ export function DocumentDetail() {
                 icon={<LayersIcon width={18} height={18} />}
                 name="Vector search"
                 about="Finds passages by meaning"
-                built={document.status === "ready"}
+                built={document.has_vector}
+                action={
+                  document.status === "ready" && !document.has_vector ? (
+                    <Button variant="secondary" size="sm" disabled={busy} onClick={() => act(() => api.buildIndex(id, "vector"))}>
+                      Build
+                    </Button>
+                  ) : null
+                }
               />
               <IndexRow
                 icon={<HashIcon width={18} height={18} />}

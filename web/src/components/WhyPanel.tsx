@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { api } from "@/lib/api";
-import { MODE_LABELS, inr, label, ms } from "@/lib/format";
+import { MODE_LABELS, indexesLabel, inr, label, ms } from "@/lib/format";
 import type { QueryOut } from "@/lib/types";
 
 import { ArrowRightIcon } from "./icons";
@@ -59,7 +59,7 @@ export function WhyPanel({ result }: { result: QueryOut }) {
           <p className="text-ink">{result.recommendation.message}</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <Button variant="secondary" size="sm" disabled={building !== "idle"} onClick={buildRecommended}>
-              Build {result.recommendation.index_to_build === "bm25" ? "keyword index" : result.recommendation.index_to_build === "graph" ? "graph" : "keyword index + graph"}
+              Build {indexesLabel(result.recommendation.index_to_build)}
             </Button>
             {building === "started" && <span className="text-good">Building in the background. Ask again when it&apos;s ready.</span>}
             {building === "error" && <span className="text-danger">Could not start the build.</span>}

@@ -30,7 +30,7 @@ def test_snippet_is_indexed_in_every_mode_but_the_decision_is_kept(client):  # n
     assert lab["document"]["status"] == "ready"
     assert lab["text"] == SNIPPET.strip()
     assert lab["strategy"] == "vector"  # small and plain: a normal upload builds vector only
-    assert lab["modes"] == ["vector", "hybrid"]  # but the Lab built BM25 too (no Neo4j here)
+    assert lab["modes"] == ["vector", "keyword", "hybrid"]  # the Lab built BM25 too (no Neo4j)
     assert services.bm25_store().has(lab["document"]["id"])
 
 
@@ -60,7 +60,7 @@ def test_query_compares_every_mode_on_one_judged_pool(client, llm):  # noqa: F81
     result = response.json()
     assert result["strategy"] == "vector"
     assert result["adaptive_mode"] == "vector"  # what a normal upload would have used
-    assert [m["mode"] for m in result["modes"]] == ["vector", "hybrid"]  # adaptive first
+    assert [m["mode"] for m in result["modes"]] == ["vector", "keyword", "hybrid"]  # adaptive first
     assert result["modes"][0]["used"] is True
     assert result["relevant_in_pool"] == 1
     for mode in result["modes"]:

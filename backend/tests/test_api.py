@@ -227,7 +227,7 @@ def test_relationship_question_on_vector_document_recommends_indexes(client):
     ).json()
     assert response["ideal_mode"] == "graph"
     assert response["mode"] == "vector"
-    assert response["recommendation"]["index_to_build"] == "bm25+graph"
+    assert response["recommendation"]["index_to_build"] == "graph"  # vector is there already
     assert response["recommendation_document_ids"] == [document_id]
 
 

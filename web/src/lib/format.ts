@@ -1,9 +1,10 @@
 // Display helpers: human labels for internal names, and number formatting.
 
-import type { DocumentStatus, Intent, Mode } from "./types";
+import type { DocumentStatus, IndexName, Intent, Mode } from "./types";
 
 export const MODE_LABELS: Record<Mode, string> = {
   vector: "Vector",
+  keyword: "Keyword",
   hybrid: "Hybrid",
   graph: "Graph",
   graph_hybrid: "Graph + Hybrid",
@@ -12,6 +13,7 @@ export const MODE_LABELS: Record<Mode, string> = {
 /** Longer names for comparisons, where vector-only is the traditional-RAG baseline. */
 export const MODE_COMPARE_LABELS: Record<Mode, string> = {
   vector: "Vector only (traditional RAG)",
+  keyword: "Keyword only",
   hybrid: "Hybrid",
   graph: "Graph",
   graph_hybrid: "Graph + Hybrid",
@@ -19,7 +21,9 @@ export const MODE_COMPARE_LABELS: Record<Mode, string> = {
 
 export const STRATEGY_LABELS: Record<string, string> = {
   vector: "Vector",
+  keyword: "Keyword only",
   hybrid: "Hybrid",
+  graph: "Graph only",
   graph_hybrid: "Graph + Hybrid",
   "": "Not decided",
 };
@@ -62,4 +66,16 @@ export function pct(value: number | null | undefined): string {
 
 export function num(value: number | null | undefined, digits = 2): string {
   return value == null ? "—" : value.toFixed(digits);
+}
+
+export const INDEX_LABELS: Record<IndexName, string> = {
+  vector: "vector index",
+  bm25: "keyword index",
+  graph: "knowledge graph",
+};
+
+/** "bm25+graph" (or a list) -> "keyword index + knowledge graph". */
+export function indexesLabel(indexes: string | string[]): string {
+  const list = typeof indexes === "string" ? indexes.split("+") : indexes;
+  return list.map((index) => label(INDEX_LABELS, index)).join(" + ");
 }

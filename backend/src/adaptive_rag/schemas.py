@@ -58,7 +58,29 @@ class Answer(BaseModel):
     cost_inr: float = 0.0
 
 
-Mode = Literal["vector", "hybrid", "graph", "graph_hybrid"]
+Mode = Literal["vector", "keyword", "hybrid", "graph", "graph_hybrid"]
+Index = Literal["vector", "bm25", "graph"]
+
+# What each mode searches. A strategy builds exactly the indexes of the mode it is named
+# after, so strategies and modes share this table. Order: cheapest first.
+MODE_INDEXES: dict[Mode, frozenset[Index]] = {
+    "vector": frozenset({"vector"}),
+    "keyword": frozenset({"bm25"}),
+    "hybrid": frozenset({"vector", "bm25"}),
+    "graph": frozenset({"graph"}),
+    "graph_hybrid": frozenset({"vector", "bm25", "graph"}),
+}
+INDEX_ORDER: tuple[Index, ...] = ("vector", "bm25", "graph")
+
+
+def mode_for(indexes: set[Index] | frozenset[Index]) -> Mode | None:
+    """The mode (or strategy) that uses exactly these indexes, if there is one."""
+    return next((mode for mode, needs in MODE_INDEXES.items() if needs == indexes), None)
+
+
+def index_names(indexes: set[Index] | frozenset[Index]) -> str:
+    """'vector+bm25' style, in a fixed order: the form the build-index API takes."""
+    return "+".join(index for index in INDEX_ORDER if index in indexes)
 
 
 class GraphPath(BaseModel):
@@ -77,7 +99,7 @@ class RetrievalResult(BaseModel):
 
 
 Intent = Literal["facts", "exact_terms", "connections", "compare"]
-Strategy = Literal["vector", "hybrid", "graph_hybrid"]
+Strategy = Mode  # a strategy builds the indexes its mode searches (see MODE_INDEXES)
 
 
 class Section(BaseModel):
@@ -120,6 +142,11 @@ class StrategyDecision(BaseModel):
     reason: str
     graph_candidate: bool = False  # many relationships, but the graph was not built
     warning: str = ""
+    # Filled in when the rules' pick is combined with the LLM's (ingest/strategy_llm.py)
+    rules_strategy: Strategy | None = None
+    llm_strategy: Strategy | None = None  # None: the LLM was not asked or failed
+    llm_reason: str = ""
+    suggested_indexes: list[Index] = []  # wanted by one side, not built; offered to the user
 
 
 class GraphEntity(BaseModel):
@@ -169,7 +196,7 @@ class Recommendation(BaseModel):
     """'This question would work better with X. Build it?' (FR26)"""
 
     better_mode: Mode
-    index_to_build: Literal["bm25", "graph", "bm25+graph"]
+    index_to_build: str  # missing indexes joined with "+", e.g. "bm25+graph" (index_names)
     message: str
 
 

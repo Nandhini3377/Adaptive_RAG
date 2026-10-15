@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     sample_max_tokens: int = 16_000  # reasoning + JSON; 8K ran out on a dense spec
     sample_max_items: int = 25  # entities/relationships asked for: enough to estimate density
     sample_shrink_retries: int = 2  # halve the sample this many times if the answer is cut off
+    strategy_max_tokens: int = 400  # the LLM's strategy pick: one word and one sentence
     many_relationships_density: float = 1.5  # relationships per entity in the sample
     many_relationships_cross_ref_rate: float = 2.0  # per 1,000 words
     many_relationships_phrase_rate: float = 3.0  # per 1,000 words

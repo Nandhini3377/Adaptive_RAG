@@ -222,7 +222,7 @@ function DocumentCard({ doc }: { doc: DocumentOut }) {
           <p className="line-clamp-2 text-sm text-danger">{doc.error}</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
-            <IndexChip name="Vector" state="built" />
+            <IndexChip name="Vector" state={doc.has_vector ? "built" : "none"} />
             <IndexChip name="Keyword" state={doc.has_bm25 ? "built" : "none"} />
             <IndexChip
               name="Graph"

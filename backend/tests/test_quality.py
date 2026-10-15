@@ -174,7 +174,7 @@ def test_pipeline_measures_the_used_mode_against_the_other_modes():
         "hybrid": FixedRetriever("hybrid", ["b", "x"]),
     }
     pipeline = QueryPipeline(retrievers, pipeline_llm(), keep_order)
-    state, _ = pipeline.run("How many leave days?", "u", ["d"], has_bm25=True, has_graph=False)
+    state, _ = pipeline.run("How many leave days?", "u", ["d"], indexes={"vector", "bm25"})
     assert state["routing"].mode == "vector"
     quality = state["quality"]  # pool: a, b, x; relevant: a and x
     assert quality.precision == 0.5
@@ -188,7 +188,7 @@ def test_a_failed_judge_call_keeps_the_answer(monkeypatch):
     pipeline = QueryPipeline(
         {"vector": FixedRetriever("vector", ["a"])}, pipeline_llm(judge_error=True), keep_order
     )
-    state, _ = pipeline.run("How many leave days?", "u", ["d"], has_bm25=False, has_graph=False)
+    state, _ = pipeline.run("How many leave days?", "u", ["d"], indexes={"vector"})
     assert state["answer"].text == "Twenty days [1]."
     assert state["quality"] is None
 
@@ -197,6 +197,6 @@ def test_measuring_can_be_switched_off(monkeypatch):
     monkeypatch.setattr("adaptive_rag.query.pipeline.settings.retrieval_quality_enabled", False)
     llm = pipeline_llm()
     pipeline = QueryPipeline({"vector": FixedRetriever("vector", ["a"])}, llm, keep_order)
-    state, meter = pipeline.run("How many leave days?", "u", ["d"], has_bm25=False, has_graph=False)
+    state, meter = pipeline.run("How many leave days?", "u", ["d"], indexes={"vector"})
     assert state["quality"] is None
     assert meter.calls == 2  # answer + grounding only

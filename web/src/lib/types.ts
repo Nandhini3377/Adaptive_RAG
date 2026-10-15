@@ -1,6 +1,16 @@
 // Types mirroring the FastAPI response models (backend/src/adaptive_rag/api/*).
 
-export type Mode = "vector" | "hybrid" | "graph" | "graph_hybrid";
+export type Mode = "vector" | "keyword" | "hybrid" | "graph" | "graph_hybrid";
+export type IndexName = "vector" | "bm25" | "graph";
+
+/** What each mode searches; a strategy builds exactly its mode's indexes (schemas.MODE_INDEXES). */
+export const MODE_INDEXES: Record<Mode, IndexName[]> = {
+  vector: ["vector"],
+  keyword: ["bm25"],
+  hybrid: ["vector", "bm25"],
+  graph: ["graph"],
+  graph_hybrid: ["vector", "bm25", "graph"],
+};
 export type Intent = "facts" | "exact_terms" | "connections" | "compare";
 export type DocumentStatus = "scanning" | "awaiting_intent" | "indexing" | "ready" | "failed";
 
@@ -12,8 +22,9 @@ export interface DocumentOut {
   progress: number;
   stage: string;
   error: string;
-  strategy: "" | "vector" | "hybrid" | "graph_hybrid";
+  strategy: "" | Mode;
   strategy_reason: string;
+  has_vector: boolean;
   has_bm25: boolean;
   graph_status: "none" | "candidate" | "building" | "ready";
   created_at: string;
@@ -55,6 +66,10 @@ export interface AnalysisOut {
   strategy: string | null;
   confidence: number | null;
   reason: string;
+  rules_strategy: Mode | null; // the fixed rules' pick
+  llm_strategy: Mode | null; // the LLM's pick; null if it was not asked or failed
+  llm_reason: string;
+  suggested_indexes: IndexName[]; // wanted by one side but not built
 }
 
 export interface Citation {
@@ -74,7 +89,7 @@ export interface GraphPath {
 
 export interface Recommendation {
   better_mode: Mode;
-  index_to_build: "bm25" | "graph" | "bm25+graph";
+  index_to_build: string; // e.g. "bm25+graph"
   message: string;
 }
 
@@ -131,9 +146,11 @@ export interface QueryOut {
 export interface LabOut {
   document: DocumentOut;
   text: string;
-  strategy: "vector" | "hybrid" | "graph_hybrid" | null; // what a normal upload would build
+  strategy: Mode | null; // what a normal upload would build
   confidence: number | null;
   reason: string;
+  rules_strategy: Mode | null;
+  llm_strategy: Mode | null;
   modes: Mode[]; // searchable now
 }
 
@@ -153,6 +170,7 @@ export interface LabQueryOut {
   classified_by: "rules" | "llm";
   strategy: string;
   adaptive_mode: Mode; // what Adaptive RAG would use with only the analysis's indexes
+  picks: Partial<Record<"final" | "rules" | "llm", Mode>>; // the mode each decider alone leads to
   ideal_mode: Mode;
   routing_reason: string;
   best_modes: Mode[]; // empty: no mode found a relevant chunk
