@@ -76,7 +76,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     has_bm25 = all(d.has_bm25 for d in documents)
     has_graph = graph is not None and all(d.graph_status == "ready" for d in documents)
 
-    pipeline = QueryPipeline(_retrievers(has_bm25, has_graph), services.llm(), rerank)
+    pipeline = QueryPipeline(retrievers_for(has_bm25, has_graph), services.llm(), rerank)
     try:
         state, meter = pipeline.run(
             body.question,
@@ -157,7 +157,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
     )
 
 
-def _retrievers(has_bm25: bool, has_graph: bool) -> dict[Mode, Retriever]:
+def retrievers_for(has_bm25: bool, has_graph: bool) -> dict[Mode, Retriever]:
     """Only the retrievers whose indexes exist (the router never picks others)."""
     vectors = services.vector_store()
     hybrid = HybridRetriever(vectors, services.bm25_store())
@@ -194,7 +194,8 @@ def _ready_documents(
     )
     if requested:
         query = query.filter(db.Document.id.in_(requested))
-    documents = query.all()
+    lab = db.lab_document_ids(session, owner_id)  # Lab snippets are asked on the Lab page
+    documents = [document for document in query if document.id not in lab]
     if not documents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No ready documents to search")
     return documents

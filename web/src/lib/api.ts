@@ -1,6 +1,6 @@
 // A small typed client for the FastAPI backend. The login token lives in localStorage.
 
-import type { AnalysisOut, DocumentOut, Intent, Mode, QueryOut } from "./types";
+import type { AnalysisOut, DocumentOut, Intent, LabOut, LabQueryOut, Mode, QueryOut } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TOKEN_KEY = "adaptive-rag-token";
@@ -110,6 +110,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question, document_ids: documentIds, mode }),
     }),
+
+  getLab: () => request<LabOut | null>("/lab"),
+  setLabSnippet: (text: string) =>
+    request<LabOut>("/lab/snippet", { method: "POST", body: JSON.stringify({ text }) }),
+  deleteLab: () => request<void>("/lab", { method: "DELETE" }),
+  labQuery: (question: string) =>
+    request<LabQueryOut>("/lab/query", { method: "POST", body: JSON.stringify({ question }) }),
 
   health: () => request<{ status: string; llm: string; neo4j: string }>("/health"),
 };

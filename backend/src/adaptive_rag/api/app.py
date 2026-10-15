@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from adaptive_rag import services
-from adaptive_rag.api import routes_auth, routes_documents, routes_query
+from adaptive_rag.api import routes_auth, routes_documents, routes_lab, routes_query
 from adaptive_rag.config import settings
 from adaptive_rag.store import db
 
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_auth.router)
     app.include_router(routes_documents.router)
     app.include_router(routes_query.router)
+    app.include_router(routes_lab.router)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:

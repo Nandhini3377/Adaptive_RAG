@@ -6,11 +6,12 @@ import { useEffect, useState } from "react";
 
 import { api, getToken, setToken } from "@/lib/api";
 
-import { ChatIcon, FileIcon, Logo, LogoutIcon } from "./icons";
+import { ChatIcon, FileIcon, FlaskIcon, Logo, LogoutIcon } from "./icons";
 
 const LINKS = [
   { href: "/", label: "Documents", icon: FileIcon },
   { href: "/chat", label: "Ask", icon: ChatIcon },
+  { href: "/lab", label: "Evaluation Lab", icon: FlaskIcon },
 ];
 
 type Health = Awaited<ReturnType<typeof api.health>>;

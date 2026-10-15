@@ -78,6 +78,16 @@ export interface Recommendation {
   message: string;
 }
 
+/** One search mode scored against the shared, LLM-judged pool of chunks. */
+export interface ModeQuality {
+  mode: Mode;
+  used: boolean; // the answer was written from this mode's chunks
+  found: number; // chunks it returned
+  relevant: number; // of those, judged relevant
+  precision: number | null; // null: the mode found nothing
+  recall: number | null; // null: only one mode, or nothing relevant anywhere
+}
+
 /** How good the retrieved chunks were, judged by the LLM after the answer. */
 export interface RetrievalQuality {
   precision: number; // relevant chunks used / chunks used
@@ -87,6 +97,7 @@ export interface RetrievalQuality {
   relevant_in_pool: number; // relevant chunks found by any available mode
   pool_size: number;
   compared_modes: string[];
+  modes: ModeQuality[]; // the used mode first, then every other indexed mode
 }
 
 export interface QueryOut {
@@ -112,6 +123,44 @@ export interface QueryOut {
   latency_ms: number;
   tokens: number;
   reasoning_tokens: number;
+  llm_calls: number;
+  cost_inr: number;
+}
+
+/** The Evaluation Lab's snippet: indexed in every mode, with the analysis's own pick. */
+export interface LabOut {
+  document: DocumentOut;
+  text: string;
+  strategy: "vector" | "hybrid" | "graph_hybrid" | null; // what a normal upload would build
+  confidence: number | null;
+  reason: string;
+  modes: Mode[]; // searchable now
+}
+
+export interface LabChunk {
+  section: string;
+  text: string;
+  relevant: boolean;
+}
+
+export interface LabMode extends ModeQuality {
+  chunks: LabChunk[];
+}
+
+export interface LabQueryOut {
+  question: string;
+  query_type: string;
+  classified_by: "rules" | "llm";
+  strategy: string;
+  adaptive_mode: Mode; // what Adaptive RAG would use with only the analysis's indexes
+  ideal_mode: Mode;
+  routing_reason: string;
+  best_modes: Mode[]; // empty: no mode found a relevant chunk
+  relevant_in_pool: number;
+  pool_size: number;
+  modes: LabMode[]; // adaptive mode first
+  latency_ms: number;
+  tokens: number;
   llm_calls: number;
   cost_inr: number;
 }

@@ -142,6 +142,8 @@ class Settings(BaseSettings):
     # with every other mode the documents have (see query/quality.py)
     retrieval_quality_enabled: bool = True
     quality_max_tokens: int = 300
+    # Evaluation Lab: a pasted snippet is indexed in every mode, so keep it small
+    lab_max_chars: int = 8_000
 
     # Retrieval
     top_k: int = 5  # chunks given to the LLM

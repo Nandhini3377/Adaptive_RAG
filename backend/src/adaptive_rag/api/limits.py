@@ -78,6 +78,7 @@ def require_registration_open(session: Session) -> None:
 def require_document_quota(session: Session, owner_id: str) -> None:
     """Raise 429 when the user already has the maximum number of documents."""
     count = session.query(db.Document).filter(db.Document.owner_id == owner_id).count()
+    count -= len(db.lab_document_ids(session, owner_id))  # the Lab snippet is not counted
     if count >= settings.max_documents_per_user:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,

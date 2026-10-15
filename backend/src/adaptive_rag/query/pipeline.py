@@ -233,6 +233,8 @@ class QueryPipeline:
                     state["owner_id"],
                     state["document_ids"],
                     llm,
+                    used_mode=used_mode,
+                    rerank=self._rerank,
                 )
             except LLMError:  # the answer stands; the scores are shown as not measured
                 quality = None

@@ -63,6 +63,26 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(default=now)
 
 
+class LabSnippet(Base):
+    """Marks a user's Evaluation Lab text: a hidden document indexed in every mode.
+
+    One per user; it is left out of the document list, the quota, and normal questions.
+    """
+
+    __tablename__ = "lab_snippets"
+
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), unique=True
+    )
+
+
+def lab_document_ids(session: Session, owner_id: str) -> set[str]:
+    """IDs of this user's Lab documents (to keep them out of normal views)."""
+    rows = session.query(LabSnippet.document_id).filter(LabSnippet.owner_id == owner_id)
+    return {row.document_id for row in rows}
+
+
 class DocumentAnalysis(Base):
     __tablename__ = "document_analyses"
 

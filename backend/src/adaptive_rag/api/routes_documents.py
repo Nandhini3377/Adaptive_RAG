@@ -13,6 +13,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from adaptive_rag import services
 from adaptive_rag.api.deps import SessionDep, UserDep, owned_document
@@ -135,7 +136,8 @@ def list_documents(user: UserDep, session: SessionDep) -> list[DocumentOut]:
         .filter(db.Document.owner_id == user.id)
         .order_by(db.Document.created_at.desc())
     )
-    return [DocumentOut.of(document) for document in documents]
+    lab = db.lab_document_ids(session, user.id)  # the Lab's snippet lives on its own page
+    return [DocumentOut.of(document) for document in documents if document.id not in lab]
 
 
 @router.get("/{document_id}")
@@ -208,11 +210,15 @@ def build_index(
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: str, user: UserDep, session: SessionDep) -> Response:
     """Remove the document from every store: vectors, keywords, graph, chunks, file, row."""
-    document = owned_document(session, user, document_id)
+    remove_document(session, owned_document(session, user, document_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def remove_document(session: Session, document: db.Document) -> None:
+    """Delete a document from every store; the caller's session commits the row delete."""
     services.vector_store().delete_document(document.id)
     services.bm25_store().remove(document.id)
     if document.graph_status != "none" and (graph := services.graph_store()) is not None:
         graph.delete_document(document.id)
     files.delete_upload(document.file_path)
-    session.delete(document)  # chunks and analysis rows cascade
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    session.delete(document)  # chunks, analysis, and Lab rows cascade

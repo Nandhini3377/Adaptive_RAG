@@ -153,6 +153,12 @@ export const CopyIcon = (props: IconProps) => (
 );
 
 /** The app mark: one question routed to one of several indexes. */
+export const FlaskIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3M7 15h10" />
+  </Icon>
+);
+
 export function Logo() {
   return (
     <span className="flex h-7 w-7 items-center justify-center rounded-[10px] bg-gradient-to-br from-accent to-accent-strong text-on-accent shadow-sm shadow-accent/30">

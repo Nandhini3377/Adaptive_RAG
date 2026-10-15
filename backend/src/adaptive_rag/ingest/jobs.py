@@ -67,6 +67,15 @@ def _public_error(error: Exception) -> str:
 @_fail_on_error
 def analyze_document(document_id: str, intents: list[Intent] | None = None) -> None:
     """Parse, scan, and sample; then wait for intent, or continue if intents were given."""
+    _analyze(document_id)
+    if intents is not None:
+        apply_intent(document_id, intents or None)
+    else:
+        set_status(document_id, "awaiting_intent", 60, "Waiting for your intent")
+
+
+def _analyze(document_id: str) -> None:
+    """Parse, quick scan, and LLM sample; saves the analysis row."""
     path = _document_path(document_id)
     set_status(document_id, "scanning", 10, "Parsing")
     elements = parse_file(path)
@@ -88,11 +97,6 @@ def analyze_document(document_id: str, intents: list[Intent] | None = None) -> N
     with db.session_scope() as session:
         session.merge(_analysis_row(document_id, profile, sample_note))
 
-    if intents is not None:
-        apply_intent(document_id, intents or None)
-    else:
-        set_status(document_id, "awaiting_intent", 60, "Waiting for your intent")
-
 
 # ------------------------------------------------------ steps 2-3: decide + index
 
@@ -100,6 +104,12 @@ def analyze_document(document_id: str, intents: list[Intent] | None = None) -> N
 @_fail_on_error
 def apply_intent(document_id: str, intents: list[Intent] | None) -> None:
     """Record the uploader's intents (None = skipped), decide the strategy, and index."""
+    _decide(document_id, intents)
+    index_document(document_id)
+
+
+def _decide(document_id: str, intents: list[Intent] | None) -> None:
+    """Run the strategy decision on the saved analysis and store it on the document."""
     with db.session_scope() as session:
         analysis = session.get(db.DocumentAnalysis, document_id)
         if analysis is None:
@@ -115,12 +125,41 @@ def apply_intent(document_id: str, intents: list[Intent] | None) -> None:
         document.strategy = decision.strategy
         document.strategy_reason = analysis.reason
         document.graph_status = "candidate" if decision.graph_candidate else "none"
-    index_document(document_id)
 
 
 @_fail_on_error
 def index_document(document_id: str) -> None:
     """Chunk and embed; add BM25 for hybrid, and the graph for graph_hybrid."""
+    chunks, owner_id, strategy = _chunk_and_embed(document_id)
+    if strategy in ("hybrid", "graph_hybrid"):
+        _build_bm25(document_id, chunks)
+    if strategy == "graph_hybrid":
+        set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
+        _build_graph(document_id, owner_id, chunks)
+    set_status(document_id, "ready", 100, "Ready")
+
+
+@_fail_on_error
+def index_lab_snippet(document_id: str) -> None:
+    """Evaluation Lab: analyze and decide as for an upload, then build EVERY index.
+
+    The decision is recorded (it is what the Lab tests) but not obeyed, so each mode can
+    be compared on the same text. The scan decides, as if the uploader skipped the intent.
+    """
+    _analyze(document_id)
+    _decide(document_id, None)
+    chunks, owner_id, _strategy = _chunk_and_embed(document_id)
+    _build_bm25(document_id, chunks)
+    set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
+    _build_graph(document_id, owner_id, chunks)
+    set_status(document_id, "ready", 100, "Ready")
+
+
+def _chunk_and_embed(document_id: str) -> tuple[list[Chunk], str, str]:
+    """Chunk the file, embed into Qdrant, and keep the text in SQLite.
+
+    Returns (chunks, owner_id, strategy).
+    """
     with db.session_scope() as session:
         document = session.get(db.Document, document_id)
         assert document is not None
@@ -133,13 +172,7 @@ def index_document(document_id: str) -> None:
     services.vector_store().add_chunks(chunks)
     with db.session_scope() as session:
         db.save_chunks(session, chunks)
-
-    if strategy in ("hybrid", "graph_hybrid"):
-        _build_bm25(document_id, chunks)
-    if strategy == "graph_hybrid":
-        set_status(document_id, "indexing", 85, "Extracting the knowledge graph")
-        _build_graph(document_id, owner_id, chunks)
-    set_status(document_id, "ready", 100, "Ready")
+    return chunks, owner_id, strategy
 
 
 @_fail_on_error

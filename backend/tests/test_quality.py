@@ -35,8 +35,18 @@ def judge(*relevant_numbers: int) -> FakeLLM:
     return FakeLLM(data={"relevant": list(relevant_numbers)})
 
 
-def measure(used, others, llm):
-    return measure_quality("q?", "search words", [hit(c) for c in used], others, "u", ["d"], llm)
+def measure(used, others, llm, rerank=None):
+    return measure_quality(
+        "q?",
+        "search words",
+        [hit(c) for c in used],
+        others,
+        "u",
+        ["d"],
+        llm,
+        used_mode="vector",
+        rerank=rerank,
+    )
 
 
 def test_precision_is_the_relevant_share_of_the_chunks_used():
@@ -87,6 +97,46 @@ def test_numbers_the_judge_invents_are_ignored():
     assert quality.relevant_used == 1
 
 
+def test_every_mode_gets_its_own_precision_and_recall():
+    # Used (vector): a, b. Hybrid: b, x, y. Pool: a, b, x, y; relevant: a, x, y.
+    hybrid = FixedRetriever("hybrid", ["b", "x", "y"])
+    quality = measure(["a", "b"], {"hybrid": hybrid}, judge(1, 3, 4))
+    used, other = quality.modes
+    assert (used.mode, used.used, used.relevant, used.precision, used.recall) == (
+        "vector",
+        True,
+        1,
+        0.5,
+        0.333,
+    )
+    assert (other.mode, other.used, other.relevant, other.precision, other.recall) == (
+        "hybrid",
+        False,
+        2,
+        0.667,
+        0.667,
+    )
+
+
+def test_a_mode_that_finds_nothing_has_no_precision():
+    quality = measure(["a"], {"graph": FixedRetriever("graph", [])}, judge(1))
+    graph = quality.modes[1]
+    assert (graph.found, graph.precision, graph.recall) == (0, None, 0.0)
+
+
+def test_other_modes_are_reranked_against_the_question_like_the_used_one():
+    seen = []
+
+    def reverse(question, hits, top_n):
+        seen.append((question, len(hits), top_n))
+        return list(reversed(hits))[:top_n]
+
+    hybrid = FixedRetriever("hybrid", ["x", "y"])
+    quality = measure(["a"], {"hybrid": hybrid}, judge(2), rerank=reverse)
+    assert seen == [("q?", 2, 5)]  # the original question, not the search words
+    assert quality.modes[1].relevant == 1  # pool: a, y, x; the judge marks y
+
+
 def test_no_chunks_means_nothing_to_measure():
     llm = judge(1)
     assert measure([], {}, llm) is None
@@ -130,6 +180,7 @@ def test_pipeline_measures_the_used_mode_against_the_other_modes():
     assert quality.precision == 0.5
     assert quality.relative_recall == 0.5
     assert quality.compared_modes == ["hybrid"]
+    assert [m.mode for m in quality.modes] == ["vector", "hybrid"]
     assert "measure" in state["timings"]
 
 

@@ -7,6 +7,7 @@ import { MODE_LABELS, inr, label, ms } from "@/lib/format";
 import type { QueryOut } from "@/lib/types";
 
 import { ArrowRightIcon } from "./icons";
+import { ModeComparison } from "./ModeComparison";
 import { Button, Meter, SectionLabel, Stat } from "./ui";
 
 const STAGE_ORDER = ["classify", "route", "retrieve", "rerank", "evaluate", "rewrite", "generate", "ground", "regenerate", "refuse", "measure"];
@@ -83,28 +84,31 @@ export function WhyPanel({ result }: { result: QueryOut }) {
       {result.quality && (
         <section>
           <SectionLabel>Retrieval quality</SectionLabel>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Meter
-              label="Precision"
-              value={result.quality.precision}
-              hint={`${result.quality.relevant_used} of the ${result.quality.used} chunks given to the model were relevant to the question.`}
-            />
-            <Meter
-              label="Relative recall"
-              value={result.quality.relative_recall}
-              hint={
-                result.quality.compared_modes.length === 0
-                  ? "Not measured: these documents have only one index, so there is no other search to compare with."
-                  : result.quality.relevant_in_pool === 0
-                    ? "Not measured: no search mode found a relevant chunk."
-                    : `Found ${result.quality.relevant_used} of the ${result.quality.relevant_in_pool} relevant chunks that any mode found (also searched: ${result.quality.compared_modes.map((m) => label(MODE_LABELS, m)).join(", ")}).`
-              }
-            />
-          </div>
-          <p className="mt-2.5 text-xs leading-relaxed text-ink-soft">
-            Relevance is judged by the LLM. Recall is relative: a relevant chunk that no mode found
-            cannot be counted.
-          </p>
+          {result.quality.modes.length > 1 ? (
+            <>
+              <p className="mb-2.5 text-ink-soft">
+                Compared with the other search modes these documents are indexed for.
+              </p>
+              <ModeComparison modes={result.quality.modes} />
+              <p className="mt-2.5 text-xs leading-relaxed text-ink-soft">
+                {result.quality.relevant_in_pool} relevant {result.quality.relevant_in_pool === 1 ? "chunk" : "chunks"}{" "}
+                found across all modes. Relevance is judged by the LLM; every mode is reranked the same way. Recall
+                is relative: a relevant chunk that no mode found cannot be counted.
+              </p>
+            </>
+          ) : (
+            <>
+              <Meter
+                label="Precision"
+                value={result.quality.precision}
+                hint={`${result.quality.relevant_used} of the ${result.quality.used} chunks given to the model were relevant to the question.`}
+              />
+              <p className="mt-2.5 text-xs leading-relaxed text-ink-soft">
+                These documents have only the vector index (traditional RAG), so there is no other mode to compare
+                with and recall is not measured. Try the Evaluation Lab to compare every mode on a short text.
+              </p>
+            </>
+          )}
         </section>
       )}
 
@@ -142,22 +146,29 @@ export function WhyPanel({ result }: { result: QueryOut }) {
       )}
 
       <section>
-        <SectionLabel>Time per stage</SectionLabel>
-        <ul className="space-y-1.5">
-          {stages.map((stage) => (
-            <li key={stage} className="grid grid-cols-[6rem_1fr_4.5rem] items-center gap-2 text-xs">
-              <span className="text-ink-soft">{stage}</span>
-              <span className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <span className="block h-full rounded-full bg-accent" style={{ width: `${(result.timings[stage] / slowest) * 100}%` }} />
-              </span>
-              <span className="text-right tabular-nums text-ink">{ms(result.timings[stage])}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-ink-soft">
+        <p className="text-xs text-ink-soft">
           Total {ms(result.latency_ms)} · {result.llm_calls} LLM calls · {result.tokens.toLocaleString()} tokens
           ({result.reasoning_tokens.toLocaleString()} reasoning) · {inr(result.cost_inr)}
         </p>
+        <details className="group mt-2">
+          <summary className="cursor-pointer select-none text-xs text-ink-soft transition-colors hover:text-ink">
+            Stage timings
+          </summary>
+          <ul className="mt-2 space-y-1.5">
+            {stages.map((stage) => (
+              <li key={stage} className="grid grid-cols-[6rem_1fr_4.5rem] items-center gap-2 text-xs">
+                <span className="text-ink-soft">{stage}</span>
+                <span className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-accent"
+                    style={{ width: `${(result.timings[stage] / slowest) * 100}%` }}
+                  />
+                </span>
+                <span className="text-right tabular-nums text-ink">{ms(result.timings[stage])}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       </section>
     </div>
   );

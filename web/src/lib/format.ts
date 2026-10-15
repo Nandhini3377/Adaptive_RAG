@@ -9,6 +9,14 @@ export const MODE_LABELS: Record<Mode, string> = {
   graph_hybrid: "Graph + Hybrid",
 };
 
+/** Longer names for comparisons, where vector-only is the traditional-RAG baseline. */
+export const MODE_COMPARE_LABELS: Record<Mode, string> = {
+  vector: "Vector only (traditional RAG)",
+  hybrid: "Hybrid",
+  graph: "Graph",
+  graph_hybrid: "Graph + Hybrid",
+};
+
 export const STRATEGY_LABELS: Record<string, string> = {
   vector: "Vector",
   hybrid: "Hybrid",
