@@ -219,7 +219,7 @@ def test_happy_path_answers_with_citations_and_timings():
         "evaluate",
         "generate",
         "ground",
-        "measure",
+        "select",
     }
     assert meter.calls == 3  # generate + grounding + relevance judge (rules classified it)
 
@@ -254,7 +254,7 @@ def test_a_repeated_rewrite_stops_the_retries():
     assert retriever.queries == ["How many leave days?", "annual leave entitlement days"]
     assert state["rewrites"] == ["annual leave entitlement days"]
     assert state["answer"].text == INSUFFICIENT_EVIDENCE
-    assert meter.calls == 5  # 2 answers + 2 rewrites + relevance judge, not a third search
+    assert meter.calls == 6  # 2 answers + 2 rewrites + a judge call per search, no third search
 
 
 def test_model_never_finds_an_answer_so_it_refuses_after_max_retries():
@@ -300,7 +300,7 @@ def test_failed_grounding_regenerates_once_in_strict_mode():
     assert state["regenerated"] is True
     assert state["answer"].text == "Twenty days [1]."
     # last three calls: regenerate, its grounding check, the relevance judge
-    assert "STRICT MODE" in llm.calls[-3][0]["content"]
+    assert "STRICT MODE" in llm.calls[-2][0]["content"]  # then the grounding check
 
 
 def test_grounding_failing_twice_refuses():

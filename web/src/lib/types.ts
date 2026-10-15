@@ -122,7 +122,8 @@ export interface QueryOut {
   insufficient_evidence: boolean;
   query_type: string;
   classified_by: "rules" | "llm";
-  mode: Mode;
+  mode: Mode; // the mode the answer was written from (best measured evidence)
+  router_mode: Mode; // the router's prediction from the question type
   ideal_mode: Mode;
   routing_reason: string;
   recommendation: Recommendation | null;

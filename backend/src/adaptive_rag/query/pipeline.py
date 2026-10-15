@@ -1,16 +1,18 @@
 """The adaptive query flow as a LangGraph state machine (PRD 7.5-7.7).
 
-    classify -> route -> retrieve -> rerank -> evaluate -> generate
-                            ^                                 |
-                            |             answered? ----------+--- yes --> ground -> done
-                            |                                 |              |
-                            +---- rewrite <-------------------+ no           | unsupported
-                                  (retries left)              |              v
+    classify -> route -> retrieve -> rerank -> select -> evaluate -> generate
+                            ^                                           |
+                            |                     answered? ------------+--- yes --> ground -> done
+                            |                                           |              |
+                            +---- rewrite <-----------------------------+ no           | unsupported
+                                  (retries left)                        |              v
                                           no retries left -> done    regenerate (strict) -> ground
                                           ("not enough evidence")    still unsupported -> refuse
 
-Every path to "done" passes through `measure`, which scores the retrieved chunks
-(precision and relative recall, see query/quality.py).
+The router predicts a mode from the question type; `select` then checks it. It searches
+with every indexed mode, one LLM call judges the pooled chunks, and the answer is written
+from the mode with the best evidence (see query/quality.py: select_mode). The same call
+gives every mode's precision and relative recall for the "Why" panel.
 
 The LLM, not the reranker, decides whether the evidence answers the question. The
 reranker only sorts chunks: its absolute score is unreliable as a pass/fail gate
@@ -38,7 +40,7 @@ from adaptive_rag.query.correction import (
     relevance_score,
     rewrite_query,
 )
-from adaptive_rag.query.quality import RetrievalQuality, measure_quality
+from adaptive_rag.query.quality import RetrievalQuality, select_mode
 from adaptive_rag.query.router import route
 from adaptive_rag.retrieval.base import Retriever
 from adaptive_rag.schemas import (
@@ -82,6 +84,7 @@ class QueryState(TypedDict, total=False):
     regenerated: bool
     refused_reason: str
     quality: RetrievalQuality | None
+    mode_used: Mode  # the mode the answer was written from (select may change the router's)
     timings: dict[str, float]
 
 
@@ -166,6 +169,38 @@ class QueryPipeline:
                 "reranked": self._rerank(state["question"], state["candidates"], settings.top_k)
             }
 
+        def select_step(state: QueryState) -> dict[str, Any]:
+            routed = state["routing"].mode
+            keep = {"mode_used": routed, "quality": None}
+            if not settings.retrieval_quality_enabled:
+                return keep
+            others = {m: r for m, r in self._retrievers.items() if m != routed}
+            try:
+                selection = select_mode(
+                    state["question"],
+                    state["search_query"],
+                    routed,
+                    state["reranked"],
+                    others,
+                    state["owner_id"],
+                    state["document_ids"],
+                    llm,
+                    rerank=self._rerank,
+                    switch=state["requested_mode"] is None,  # a mode chosen by hand stays
+                )
+            except LLMError:  # no judgement: answer with the router's pick, unmeasured
+                return keep
+            if selection is None:
+                return keep
+            update: dict[str, Any] = {
+                "mode_used": selection.mode,
+                "quality": selection.quality,
+                "reranked": selection.hits,
+            }
+            if "graph" not in selection.mode:  # paths only explain graph evidence
+                update["graph_paths"] = []
+            return update
+
         def evaluate_step(state: QueryState) -> dict[str, Any]:
             score = relevance_score(state["reranked"])
             return {"relevance": score, "relevance_history": [*state["relevance_history"], score]}
@@ -216,27 +251,6 @@ class QueryPipeline:
                 "refused_reason": "answer still had unsupported claims after a strict retry",
             }
 
-        def measure_step(state: QueryState) -> dict[str, Any]:
-            if not settings.retrieval_quality_enabled:
-                return {"quality": None}
-            used_mode = state["routing"].mode
-            others = {m: r for m, r in self._retrievers.items() if m != used_mode}
-            try:
-                quality = measure_quality(
-                    state["question"],
-                    state["search_query"],
-                    state["reranked"],
-                    others,
-                    state["owner_id"],
-                    state["document_ids"],
-                    llm,
-                    used_mode=used_mode,
-                    rerank=self._rerank,
-                )
-            except LLMError:  # the answer stands; the scores are shown as not measured
-                quality = None
-            return {"quality": quality}
-
         def after_generate(state: QueryState) -> str:
             if not state["answer"].insufficient_evidence:
                 return "ground"
@@ -254,35 +268,33 @@ class QueryPipeline:
             ("route", route_step),
             ("retrieve", retrieve_step),
             ("rerank", rerank_step),
+            ("select", select_step),
             ("evaluate", evaluate_step),
             ("rewrite", rewrite_step),
             ("generate", generate_step),
             ("ground", ground_step),
             ("regenerate", regenerate_step),
             ("refuse", refuse_step),
-            ("measure", measure_step),
         ]:
             graph.add_node(name, timed(name, step))
         graph.add_edge(START, "classify")
         graph.add_edge("classify", "route")
         graph.add_edge("route", "retrieve")
         graph.add_edge("retrieve", "rerank")
-        graph.add_edge("rerank", "evaluate")
+        graph.add_edge("rerank", "select")
+        graph.add_edge("select", "evaluate")
         graph.add_edge("evaluate", "generate")
         graph.add_conditional_edges(
             "generate",
             after_generate,
-            {"ground": "ground", "rewrite": "rewrite", "done": "measure"},
+            {"ground": "ground", "rewrite": "rewrite", "done": END},
         )
-        graph.add_conditional_edges(
-            "rewrite", after_rewrite, {"retrieve": "retrieve", "done": "measure"}
-        )
+        graph.add_conditional_edges("rewrite", after_rewrite, {"retrieve": "retrieve", "done": END})
         graph.add_conditional_edges(
             "ground",
             after_ground,
-            {"done": "measure", "regenerate": "regenerate", "refuse": "refuse"},
+            {"done": END, "regenerate": "regenerate", "refuse": "refuse"},
         )
         graph.add_edge("regenerate", "ground")
-        graph.add_edge("refuse", "measure")
-        graph.add_edge("measure", END)
+        graph.add_edge("refuse", END)
         return graph.compile()

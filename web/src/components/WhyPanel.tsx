@@ -10,7 +10,7 @@ import { ArrowRightIcon } from "./icons";
 import { ModeComparison } from "./ModeComparison";
 import { Button, Meter, SectionLabel, Stat } from "./ui";
 
-const STAGE_ORDER = ["classify", "route", "retrieve", "rerank", "evaluate", "rewrite", "generate", "ground", "regenerate", "refuse", "measure"];
+const STAGE_ORDER = ["classify", "route", "retrieve", "rerank", "select", "evaluate", "rewrite", "generate", "ground", "regenerate", "refuse"];
 
 /** "Why did I get this answer?" (FR36): every decision the pipeline made, with numbers. */
 export function WhyPanel({ result }: { result: QueryOut }) {
@@ -42,13 +42,27 @@ export function WhyPanel({ result }: { result: QueryOut }) {
             note={result.classified_by === "rules" ? "by rules (free)" : "by the LLM"}
           />
           <ArrowRightIcon className="hidden shrink-0 text-ink-soft sm:block" />
-          <FlowStep title="Ideal mode" value={label(MODE_LABELS, result.ideal_mode)} note="best for this type" />
+          <FlowStep
+            title="Router's pick"
+            value={label(MODE_LABELS, result.router_mode)}
+            note={
+              result.router_mode === result.ideal_mode
+                ? "from the question type"
+                : `${label(MODE_LABELS, result.ideal_mode)} not built`
+            }
+          />
           <ArrowRightIcon className="hidden shrink-0 text-ink-soft sm:block" />
           <FlowStep
-            title="Mode used"
+            title="Answered with"
             value={label(MODE_LABELS, result.mode)}
-            note={result.mode === result.ideal_mode ? "the ideal one" : "best index available"}
-            tone={result.mode === result.ideal_mode ? "good" : "warn"}
+            note={
+              !result.quality
+                ? "not measured"
+                : result.mode === result.router_mode
+                  ? "confirmed by measuring"
+                  : "best measured evidence"
+            }
+            tone="good"
           />
         </div>
         <p className="mt-2.5 leading-relaxed text-ink-soft">{result.routing_reason}</p>
@@ -87,9 +101,10 @@ export function WhyPanel({ result }: { result: QueryOut }) {
           {result.quality.modes.length > 1 ? (
             <>
               <p className="mb-2.5 text-ink-soft">
-                Compared with the other search modes these documents are indexed for.
+                Every mode these documents are indexed for searched the question; the answer uses the one with the
+                most relevant chunks (on a tie, the fewest irrelevant ones).
               </p>
-              <ModeComparison modes={result.quality.modes} />
+              <ModeComparison modes={result.quality.modes} usedLabel="answered with" />
               <p className="mt-2.5 text-xs leading-relaxed text-ink-soft">
                 {result.quality.relevant_in_pool} relevant {result.quality.relevant_in_pool === 1 ? "chunk" : "chunks"}{" "}
                 found across all modes. Relevance is judged by the LLM; every mode is reranked the same way. Recall

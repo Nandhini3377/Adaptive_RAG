@@ -356,7 +356,8 @@ function TurnView({ turn }: { turn: Turn }) {
             <Logo />
             <Badge>{label({}, result.query_type)} question</Badge>
             <ArrowRightIcon width={14} height={14} className="text-ink-soft" />
-            <Badge tone={result.mode === result.ideal_mode ? "good" : "warn"} dot>
+            {/* Amber only when a better index is missing (the answer recommends building it) */}
+            <Badge tone={result.recommendation ? "warn" : "good"} dot>
               {label(MODE_LABELS, result.mode)}
             </Badge>
             {result.insufficient_evidence && <Badge tone="warn">Not enough evidence</Badge>}

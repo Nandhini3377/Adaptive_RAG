@@ -2,7 +2,7 @@
 
 from adaptive_rag.llm.base import LLMError
 from adaptive_rag.query.pipeline import QueryPipeline
-from adaptive_rag.query.quality import measure_quality
+from adaptive_rag.query.quality import measure_quality, select_mode
 from adaptive_rag.retrieval.base import Retriever
 from adaptive_rag.schemas import Chunk, RetrievalResult, SearchHit
 from tests.conftest import FakeLLM
@@ -181,7 +181,7 @@ def test_pipeline_measures_the_used_mode_against_the_other_modes():
     assert quality.relative_recall == 0.5
     assert quality.compared_modes == ["hybrid"]
     assert [m.mode for m in quality.modes] == ["vector", "hybrid"]
-    assert "measure" in state["timings"]
+    assert "select" in state["timings"]
 
 
 def test_a_failed_judge_call_keeps_the_answer(monkeypatch):
@@ -200,3 +200,67 @@ def test_measuring_can_be_switched_off(monkeypatch):
     state, meter = pipeline.run("How many leave days?", "u", ["d"], indexes={"vector"})
     assert state["quality"] is None
     assert meter.calls == 2  # answer + grounding only
+
+
+# ------------------------------------------------------- choosing the evidence
+
+
+def select(routed_hits, others, llm, switch=True):
+    return select_mode(
+        "q?",
+        "search words",
+        "hybrid",
+        [hit(c) for c in routed_hits],
+        others,
+        "u",
+        ["d"],
+        llm,
+        switch=switch,
+    )
+
+
+def test_the_mode_with_more_relevant_chunks_is_chosen():
+    # Hybrid (router): a, b. Graph: x, y. Relevant: x, y.
+    chosen = select(["a", "b"], {"graph": FixedRetriever("graph", ["x", "y"])}, judge(3, 4))
+    assert chosen.mode == "graph"
+    assert [h.chunk.id for h in chosen.hits] == ["x", "y"]
+    assert chosen.quality.modes[0].mode == "graph" and chosen.quality.modes[0].used
+
+
+def test_on_equal_evidence_fewer_irrelevant_chunks_wins():
+    """The live case: hybrid and keyword both found the 2 relevant chunks; keyword sent no noise."""
+    keyword = FixedRetriever("keyword", ["a", "b"])
+    chosen = select(["a", "b", "c", "d", "e"], {"keyword": keyword}, judge(1, 2))
+    assert chosen.mode == "keyword"
+    assert (chosen.quality.precision, chosen.quality.relative_recall) == (1.0, 1.0)
+
+
+def test_a_full_tie_keeps_the_routers_pick():
+    chosen = select(["a", "b"], {"vector": FixedRetriever("vector", ["a", "b"])}, judge(1))
+    assert chosen.mode == "hybrid"
+
+
+def test_nothing_relevant_keeps_the_routers_pick():
+    chosen = select(["a"], {"vector": FixedRetriever("vector", ["x"])}, judge())
+    assert chosen.mode == "hybrid"
+
+
+def test_a_mode_chosen_by_hand_is_never_switched():
+    chosen = select(["a"], {"graph": FixedRetriever("graph", ["x"])}, judge(2), switch=False)
+    assert chosen.mode == "hybrid"
+    assert chosen.quality.modes[1].relevant == 1  # still measured
+
+
+def test_the_answer_is_written_from_the_chosen_modes_chunks():
+    retrievers = {
+        "vector": FixedRetriever("vector", ["a", "b"]),
+        "keyword": FixedRetriever("keyword", ["a"]),
+    }
+    llm = pipeline_llm()  # the judge marks passages 1 and 3 of the pool a, b: only a exists
+    state, _ = QueryPipeline(retrievers, llm, keep_order).run(
+        "How many leave days?", "u", ["d"], indexes={"vector", "bm25"}
+    )
+    assert state["routing"].mode == "vector"  # the router's prediction
+    assert state["mode_used"] == "keyword"  # same relevant chunk, no noise
+    answer_prompt = next(c for c in llm.calls if c[0]["role"] == "system")[1]["content"]
+    assert "text of a" in answer_prompt and "text of b" not in answer_prompt

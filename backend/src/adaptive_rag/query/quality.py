@@ -74,6 +74,57 @@ class RetrievalQuality(BaseModel):
     modes: list[ModeQuality] = []  # the used mode first, then the others
 
 
+class Selection(BaseModel):
+    """The mode whose chunks the answer is written from, and how every mode did."""
+
+    mode: str
+    hits: list[SearchHit]
+    quality: RetrievalQuality
+
+
+def select_mode(
+    question: str,
+    search_query: str,
+    routed_mode: str,
+    routed_hits: list[SearchHit],
+    other_retrievers: dict[Mode, Retriever],
+    owner_id: str,
+    document_ids: list[str],
+    llm: LLM,
+    *,
+    rerank: Reranker | None = None,
+    switch: bool = True,
+) -> Selection | None:
+    """Search every mode, judge the pool in one LLM call, and pick the best evidence.
+
+    Best = most relevant chunks; on a tie, the higher precision (fewer irrelevant chunks
+    for the model to read); on a full tie, the router's pick. The router's pick is kept
+    when nothing relevant was found, or when `switch` is off (a mode chosen by hand).
+    None when no mode found any chunk.
+    """
+    results: dict[str, list[SearchHit]] = {routed_mode: routed_hits}
+    for mode, retriever in other_retrievers.items():
+        try:
+            results[mode] = search_mode(
+                retriever, question, search_query, owner_id, document_ids, rerank
+            )
+        except Exception:  # an optional comparison must never break the answer
+            log.exception("Could not search with %s for the comparison pool", mode)
+    if not any(results.values()):
+        return None
+
+    comparison = compare_modes(question, results, llm, routed_mode)
+    chosen = routed_mode
+    if switch:
+        best = max(
+            comparison.modes,
+            key=lambda m: (m.relevant, m.precision or 0.0, m.mode == routed_mode),
+        )
+        if best.relevant:
+            chosen = best.mode
+    return Selection(mode=chosen, hits=results[chosen], quality=_quality_for(comparison, chosen))
+
+
 def measure_quality(
     question: str,
     search_query: str,
@@ -86,24 +137,33 @@ def measure_quality(
     used_mode: str,
     rerank: Reranker | None = None,
 ) -> RetrievalQuality | None:
-    """Judge the pooled chunks with one LLM call; None when no chunks were retrieved.
+    """Score the chunks a mode already used against the other modes (no switching).
 
     With `rerank`, each other mode is searched and reranked like the used one (fair);
     without it, each other mode's first `top_k` hits are taken as they come.
     """
     if not used:
         return None
-    results: dict[str, list[SearchHit]] = {used_mode: used}
-    for mode, retriever in other_retrievers.items():
-        try:
-            results[mode] = search_mode(
-                retriever, question, search_query, owner_id, document_ids, rerank
-            )
-        except Exception:  # an optional comparison must never break the answer
-            log.exception("Could not search with %s for the recall pool", mode)
+    selection = select_mode(
+        question,
+        search_query,
+        used_mode,
+        used,
+        other_retrievers,
+        owner_id,
+        document_ids,
+        llm,
+        rerank=rerank,
+        switch=False,
+    )
+    return selection.quality if selection else None
 
-    comparison = compare_modes(question, results, llm, used_mode)
-    mine, *others = comparison.modes
+
+def _quality_for(comparison: "ModeComparison", used_mode: str) -> RetrievalQuality:
+    """The comparison seen from the mode the answer uses (listed first)."""
+    modes = [m.model_copy(update={"used": m.mode == used_mode}) for m in comparison.modes]
+    modes.sort(key=lambda m: not m.used)
+    mine, *others = modes
     return RetrievalQuality(
         precision=mine.precision or 0.0,
         relative_recall=mine.recall,
@@ -112,7 +172,7 @@ def measure_quality(
         relevant_in_pool=len(comparison.relevant_ids),
         pool_size=comparison.pool_size,
         compared_modes=[m.mode for m in others],
-        modes=comparison.modes,
+        modes=modes,
     )
 
 

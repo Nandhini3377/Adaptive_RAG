@@ -48,7 +48,8 @@ class QueryOut(BaseModel):
     insufficient_evidence: bool
     query_type: str
     classified_by: str
-    mode: str
+    mode: str  # the mode the answer was written from (best measured evidence)
+    router_mode: str  # the router's prediction from the question type
     ideal_mode: str
     routing_reason: str
     recommendation: Recommendation | None
@@ -94,7 +95,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
             "The language model failed to answer. Please try again in a moment.",
         ) from error
 
-    answer, routing = state["answer"], state["routing"]
+    answer, routing, mode_used = state["answer"], state["routing"], state["mode_used"]
     recommendation_ids = _missing_index(documents, routing.recommendation)
     latency_ms = round((time.perf_counter() - started) * 1000, 1)
     record = db.QueryRecord(
@@ -103,7 +104,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
         query=body.question,
         query_type=state["classification"].query_type,
         ideal_mode=routing.ideal_mode,
-        mode_used=routing.mode,
+        mode_used=mode_used,
         recommendation=routing.recommendation.model_dump() if routing.recommendation else None,
         routing_reason=routing.reason,
         rewritten_queries=state["rewrites"],
@@ -130,7 +131,8 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
         insufficient_evidence=answer.insufficient_evidence,
         query_type=state["classification"].query_type,
         classified_by=state["classification"].source,
-        mode=routing.mode,
+        mode=mode_used,
+        router_mode=routing.mode,
         ideal_mode=routing.ideal_mode,
         routing_reason=routing.reason,
         recommendation=routing.recommendation,
