@@ -3,7 +3,7 @@
 import sqlite3
 
 from adaptive_rag import services
-from adaptive_rag.ingest.strategy_llm import LLMStrategy, combine, llm_strategy
+from adaptive_rag.ingest.strategy_llm import LLMStrategy, combine, llm_strategy, rule_checks
 from adaptive_rag.llm.base import LLMError
 from adaptive_rag.schemas import DocumentProfile, StrategyDecision
 from adaptive_rag.store import db
@@ -44,6 +44,25 @@ def test_the_llm_sees_every_signal_and_the_intent():
     prompt = fake.calls[0][0]["content"]
     for shown in ("42.6", "22.9", "0.50", "Ledger, Token Vault", "Find exact terms, IDs, or codes"):
         assert shown in prompt
+
+
+def test_the_llm_gets_the_rules_criteria_but_not_their_pick():
+    fake = FakeLLM(data={"strategy": "hybrid", "reason": "x"})
+    llm_strategy(PROFILE, None, fake)
+    prompt = fake.calls[0][0]["content"]
+    assert "relationships per entity: 0.5 vs more than 1.5 -> not met" in prompt
+    assert "Rules:" not in prompt and "rules picked" not in prompt.lower()
+
+
+def test_rule_checks_are_computed_not_left_to_the_llm():
+    """The runbook case: 22.9 cross-refs and 9.8 phrases are both over their limits."""
+    runbook = PROFILE.model_copy(update={"relationship_phrase_rate": 9.8})
+    checks = rule_checks(runbook)
+    assert "- Many relationships: YES" in checks
+    assert "cross-references per 1,000 words: 22.9 vs more than 2 -> met" in checks
+    assert "relationship phrases per 1,000 words: 9.8 vs more than 3 -> met" in checks
+    assert "- Small and plain: NO" in checks
+    assert "identifiers per 1,000 words: 42.6 vs at least 3 -> met" in checks
 
 
 def test_an_unknown_strategy_or_a_failed_call_gives_no_pick():

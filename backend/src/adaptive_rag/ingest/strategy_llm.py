@@ -1,7 +1,9 @@
 """Step 3b: a second opinion on the strategy from the LLM, and how the two picks combine.
 
 The rules (selector.py) decide from fixed thresholds. The LLM gets every number the scan
-and the sample produced, plus the uploader's intent, and picks from all five strategies.
+and the sample produced, the uploader's intent, and the rules' criteria (what the numbers
+mean), but not the rules' pick, so its answer stays a second opinion. It picks from all
+five strategies.
 
 Combining them: build only the indexes both picks share, and offer the rest as a
 suggestion. Every overlap of two strategies' index sets is itself a strategy (see
@@ -13,7 +15,8 @@ import logging
 from pydantic import BaseModel
 
 from adaptive_rag.config import settings
-from adaptive_rag.ingest.intent import INTENT_LABELS
+from adaptive_rag.ingest.intent import INTENT_LABELS, many_relationships
+from adaptive_rag.ingest.selector import is_small_plain
 from adaptive_rag.llm.base import LLM, LLMError
 from adaptive_rag.schemas import (
     INDEX_ORDER,
@@ -60,6 +63,12 @@ Document signals:
 
 Expected questions (from the uploader): {intents}
 
+The fixed rules' criteria, already checked against the numbers above (trust these
+results; then decide yourself, and unlike the rules you may also pick keyword or graph):
+{rule_checks}
+The rules map them as: many relationships + questions about connections -> graph_hybrid;
+small and plain + only fact questions -> vector; otherwise -> hybrid.
+
 Reply with the strategy and one sentence saying why, citing the signals."""
 
 
@@ -87,6 +96,7 @@ def llm_strategy(
         entities=", ".join(profile.sample_entities[:15]) or "none found",
         relationships="; ".join(profile.sample_relationships[:10]) or "none found",
         intents="; ".join(INTENT_LABELS[i] for i in intents) if intents else "not given",
+        rule_checks=rule_checks(profile),
     )
     try:
         response = llm.complete_json(
@@ -106,6 +116,69 @@ def llm_strategy(
     return LLMStrategy(
         strategy=strategy, reason=str(data.get("reason", "")).strip(), cost_inr=response.cost_inr
     )
+
+
+def rule_checks(profile: DocumentProfile) -> str:
+    """Each rule criterion with its number, limit, and result, computed here (not by the LLM).
+
+    Measured: given only the limits, the LLM called 9.8 relationship phrases per 1,000
+    words "well below" a limit of 3.0. Comparing numbers is done in code instead.
+    """
+
+    def check(name: str, value: float, op: str, limit: float, unit: str = "") -> str:
+        met = value > limit if op == ">" else value < limit if op == "<" else value >= limit
+        words = {">": "more than", "<": "under", ">=": "at least"}[op]
+        result = "met" if met else "not met"
+        return f"  - {name}: {value:g}{unit} vs {words} {limit:g}{unit} -> {result}"
+
+    s = settings
+    yes = {True: "YES", False: "NO"}
+    exact_terms = profile.identifier_density >= s.exact_terms_identifier_density
+    lines = [
+        f"- Many relationships: {yes[many_relationships(profile)]} "
+        "(the first check alone, or the second AND the third)",
+        check(
+            "relationships per entity",
+            profile.relationship_density,
+            ">",
+            s.many_relationships_density,
+        ),
+        check(
+            "cross-references per 1,000 words",
+            profile.cross_ref_rate,
+            ">",
+            s.many_relationships_cross_ref_rate,
+        ),
+        check(
+            "relationship phrases per 1,000 words",
+            profile.relationship_phrase_rate,
+            ">",
+            s.many_relationships_phrase_rate,
+        ),
+        f"- Small and plain: {yes[is_small_plain(profile)]} (all three)",
+        check("pages", profile.page_count, "<", s.small_plain_max_pages),
+        check(
+            "identifiers per 1,000 words",
+            profile.identifier_density,
+            "<",
+            s.small_plain_max_identifier_density,
+        ),
+        check(
+            "share of words in tables",
+            round(profile.table_share * 100, 1),
+            "<",
+            s.small_plain_max_table_share * 100,
+            "%",
+        ),
+        f"- Exact terms likely: {yes[exact_terms]}",
+        check(
+            "identifiers per 1,000 words",
+            profile.identifier_density,
+            ">=",
+            s.exact_terms_identifier_density,
+        ),
+    ]
+    return "\n".join(lines)
 
 
 def combine(rules: StrategyDecision, llm: LLMStrategy | None) -> StrategyDecision:
