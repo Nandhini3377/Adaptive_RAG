@@ -139,7 +139,7 @@ Rules (PRD FR17):
 
 **What we measured (honest findings):**
 - Our first test assumed vector search would miss "AUTH-403". **It didn't** — bge-small found exact codes, even among AUTH-401…406. The real failure case is a code **buried inside a long chunk**: vector search ranked it **3rd**, behind chunks that only *looked* similar ("403 Forbidden", "AUTH-401"). BM25 ranked it 1st, and hybrid put it 1st.
-- The reranker gave the right chunk only **0.23** for "What does AUTH-403 mean?" (but 0.97 for a more specific question). → The relevance threshold must be calibrated on data, not guessed.
+- The reranker gave the right chunk only **0.23** for "What does AUTH-403 mean?" (but 0.97 for a more specific question). → The first sign that the absolute score can't be used as a pass/fail threshold (see section 12).
 - Classic **BM25Okapi** gives negative scores on 1–2 chunk documents (a word in every chunk gets negative weight), so small documents were unsearchable. Switched to **BM25Plus** and filter to chunks sharing at least one word.
 - Replaced LangChain's `BM25Retriever` with `rank-bm25` directly: `langchain-community` is being discontinued, and the wrapper added nothing we used.
 
@@ -161,9 +161,9 @@ Rules (PRD FR17):
 
 **What we measured:** on the real PRD, the first sample call **ran out of tokens** (8K cap) — a dense spec produces a long JSON list *plus* reasoning. Fix: 16K cap and "at most 40 items". If the LLM still fails, the scan alone decides (graceful degradation), and the reason says so.
 
-**Q: Why not just build every index for every document?** Cost and time. Graph extraction for a 100-page document is ~100K tokens; the sample is a fraction. The Evaluation Lab reports the *analysis cost ratio*. And any index can still be added later with one click.
+**Q: Why not just build every index for every document?** Cost and time. Graph extraction for a 100-page document is ~100K tokens; the sample is a fraction. And any index can still be added later with one click.
 
-**Q: How did you pick the thresholds?** PRD starting values in config; they're meant to be tuned against the eval set, and the lab reports *strategy accuracy* (decision vs best measured strategy) to show whether they're right.
+**Q: How did you pick the thresholds?** PRD starting values in config, so they can be tuned without code changes. They are not calibrated yet: the Evaluation Lab that measured strategy accuracy was removed (section 13b), and the 60 gold questions in `data/eval/` are where calibration would start.
 
 ---
 
@@ -186,15 +186,15 @@ Rules (PRD FR17):
 
 - **Classifier (rules first):** regex rules for comparison, multi-hop (two different relationship verbs, e.g. "teams that **own** services **affected** by…"), relationship, aggregation, keyword (IDs or quoted terms), fact lookup. Only when no rule is confident is the LLM asked. On the eval set, rules cover ≥ 80% of questions — free and instant.
 - **Router:** ideal mode per type (fact/semantic → vector, keyword → hybrid, relationship/multi-hop → graph, comparison/aggregation → graph_hybrid), but **only modes whose indexes exist**. Otherwise it uses the strongest available mode and attaches a **recommendation** ("Build the graph for this document?"). Nothing is built without the user.
-- **Relevance gate (no LLM):** score = average of the top-1 reranker score and the mean of the top 3 (0–1). Below the threshold → **rewrite** the query (one LLM call that avoids earlier attempts) → retrieve again, up to 2 retries → otherwise refuse with the standard insufficient-evidence message.
-- **Grounding check:** one LLM call splits the answer into claims and checks each against its cited chunk. Unsupported claims → regenerate once with a stricter prompt → still unsupported → refuse.
-- **LangGraph** state machine wires it: classify → route → retrieve → rerank → evaluate → (rewrite ↺) → generate → ground → (regenerate ↺) → done/refuse. Each node is timed; a `MeteredLLM` wrapper adds up tokens and cost across every call in one query.
+- **The LLM decides whether the evidence answers the question**, not the reranker score. If the answer comes back as "not enough evidence" → **rewrite** the query (one LLM call asking for one direct question that avoids earlier attempts) → retrieve again, up to 2 retries → otherwise return the standard insufficient-evidence message. A relevance score (average of the top-1 reranker score and the mean of the top 3) is still recorded for the "Why" panel, but nothing acts on it.
+- **Grounding check:** one LLM call splits the answer into claims and checks each against its cited chunk. The result is a **score** (share of supported claims), not a veto: only below `grounding_threshold` (0.5) → regenerate once with a stricter prompt → still below → refuse. The checker is itself noisy (it flagged correct answers in repeat runs), so one doubtful claim must not discard a supported answer.
+- **LangGraph** state machine wires it: classify → route → retrieve → rerank → evaluate → generate → (no answer: rewrite ↺) → ground → (regenerate ↺) → measure → done/refuse. Each node is timed; a `MeteredLLM` wrapper adds up tokens and cost across every call in one query.
 
 **Q: Why rerank against the original question, not the rewrite?** The rewrite is only a better search query; the answer still has to address what the user asked.
 
 **Q: Why LangGraph instead of plain function calls?** The flow has loops (rewrite, regenerate) and conditional exits. A state machine makes every path explicit and testable — the tests cover the happy path, rewrite-then-success, retries exhausted, regenerate-then-pass, and regenerate-then-refuse.
 
-**Q: What's the threshold?** 0.15 to start. We measured reranker scores as low as 0.23 for a *correct* top chunk, so a high threshold would refuse good answers. It must be calibrated with the Evaluation Lab.
+**Q: Why not a reranker-score threshold?** There was one (0.15) at first. Measured on the real model it was wrong in both directions: it scored **0.003** for a chunk the LLM answered correctly from, and **0.98** for a question the documents couldn't answer. A cross-encoder is good at *ordering* chunks for one question, but its absolute score doesn't mean "contains the answer", and the small MiniLM model was trained on web search, not these documents. So the reranker only sorts (picks the top 5 of ~20), and the LLM, which can reason about the evidence, decides.
 
 ---
 

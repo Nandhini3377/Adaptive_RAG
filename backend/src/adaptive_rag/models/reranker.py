@@ -23,7 +23,7 @@ def _model() -> TextCrossEncoder:
 def rerank(question: str, hits: list[SearchHit], top_n: int | None = None) -> list[SearchHit]:
     """Re-score hits by reading question and chunk together; best first.
 
-    Scores are squashed to 0-1 so the relevance gate can use one threshold.
+    Scores are squashed to 0-1 so they are easy to read; only their order is used.
     """
     if not hits:
         return []
