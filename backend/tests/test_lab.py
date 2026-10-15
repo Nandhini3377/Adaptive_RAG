@@ -133,5 +133,9 @@ def mode(name, relevant, precision):
 def test_best_modes_keep_ties_and_need_something_relevant():
     assert best_modes([mode("vector", 1, 0.2), mode("hybrid", 2, 0.4)]) == ["hybrid"]
     assert best_modes([mode("vector", 2, 0.4), mode("hybrid", 2, 0.4)]) == ["vector", "hybrid"]
-    assert best_modes([mode("vector", 2, 0.4), mode("hybrid", 2, 0.5)]) == ["hybrid"]
     assert best_modes([mode("vector", 0, 0.0), mode("hybrid", 0, None)]) == []
+
+
+def test_fewer_chunks_returned_does_not_make_a_mode_best():
+    """Same evidence, but graph returned 4 chunks instead of 5: higher precision, not better."""
+    assert best_modes([mode("vector", 1, 0.2), mode("graph", 1, 0.25)]) == ["vector", "graph"]

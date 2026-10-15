@@ -222,14 +222,13 @@ def lab_query(body: LabQueryIn, user: UserDep, session: SessionDep) -> LabQueryO
 
 
 def best_modes(modes: list[ModeQuality]) -> list[str]:
-    """Modes that found the most relevant chunks, ties broken by precision; all ties kept.
+    """Modes that found the most relevant chunks (highest recall); every tie counts as best.
 
-    Every mode is scored against the same pool, so more relevant chunks = higher recall.
+    Precision is not a tie-breaker: on a small text a mode that returns fewer chunks gets
+    higher precision with the same evidence (measured: 4 of 5 chunks vs all 5).
     """
-    if not any(m.relevant for m in modes):
-        return []
-    top = max((m.relevant, m.precision or 0.0) for m in modes)
-    return [m.mode for m in modes if (m.relevant, m.precision or 0.0) == top]
+    most = max((m.relevant for m in modes), default=0)
+    return [m.mode for m in modes if m.relevant == most] if most else []
 
 
 def _lab_document(session: Session, owner_id: str) -> db.Document | None:
