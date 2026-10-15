@@ -9,8 +9,9 @@ upload → validate → parse → quick scan + LLM sample → intent
        → rules pick + LLM pick → build the indexes both share (the rest: suggested)
        → chunk → [embed (Qdrant)] [keywords (BM25)] [knowledge graph (Neo4j)]
 
-question → classify (rules first) → route → retrieve → rerank → answer with [n] citations
-         → (no answer? rewrite + retry) → grounding check → precision / recall → explained answer
+question → classify (rules first) → route → retrieve → rerank
+         → select: every indexed mode searches, one LLM call judges, best evidence wins
+         → answer with [n] citations → (no answer? rewrite + retry) → grounding check → explained answer
 ```
 
 ## How a document is indexed
@@ -80,7 +81,7 @@ npm run dev                                          # http://localhost:3000
 
 1. Register, then upload a document (PDF, DOCX, HTML, Markdown, TXT).
 2. Watch the scan, answer the intent question (or skip), and read the decision: the rules' pick, the LLM's pick, what was built, and what is suggested.
-3. Ask questions on **Ask**. Each answer shows its precision and relative recall next to the other modes the document is indexed for (vector-only is the traditional-RAG baseline). Open "Why did I get this answer?" for the detail.
+3. Ask questions on **Ask**. The router predicts a mode from the question type; then every mode the document is indexed for searches, and the answer is written from the one with the most relevant chunks (on a tie, the fewest irrelevant ones). Each answer shows every mode's precision and relative recall (vector-only is the traditional-RAG baseline). Open "Why did I get this answer?" for the detail.
 4. Open **Evaluation Lab**, paste up to 8,000 characters, and ask a question. Every mode searches the same text, one LLM call judges the chunks, and the page shows which mode was best and whether the rules alone, the LLM alone, and the built overlap would have used it. Use a text longer than a few paragraphs: with about 5 chunks every mode returns nearly all of it and they tie.
 
 ### Command-line tools
