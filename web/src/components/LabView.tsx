@@ -203,10 +203,6 @@ function SnippetForm({
           </Button>
         </div>
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-        Indexing runs the normal analysis (one LLM call) and builds the knowledge graph (a few short calls), and
-        counts as one question toward your daily limit. It replaces your previous Lab text.
-      </p>
     </form>
   );
 }
