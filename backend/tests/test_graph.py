@@ -8,6 +8,7 @@ import pytest
 
 from adaptive_rag.ingest.extractor import entity_key, extract_graph
 from adaptive_rag.llm.base import LLMTruncatedError
+from adaptive_rag.retrieval.graph import matching_relations
 from adaptive_rag.schemas import Chunk
 from tests.conftest import FakeLLM
 
@@ -87,6 +88,21 @@ def test_entity_keys_normalize_spelling():
     assert entity_key("The Auth-Service") == entity_key("auth service") == "auth service"
 
 
+def test_question_words_pick_matching_relation_types():
+    types = ["DEPENDS_ON", "USED_BY", "OWNS", "OWNED_BY", "CALLS"]
+    assert matching_relations("Which services indirectly depend on X?", types) == ["DEPENDS_ON"]
+    assert matching_relations("Who owns the Ledger?", types) == ["OWNS"]
+    assert matching_relations("What is the Ledger?", types) == []
+
+
+def test_generic_lowercase_names_are_not_entities():
+    from adaptive_rag.store.graph_store import _is_generic
+
+    assert _is_generic("services") and _is_generic("none")
+    assert not _is_generic("Ledger") and not _is_generic("Auth Service")
+    assert not _is_generic("auth service")  # several words: a real name, lower-cased
+
+
 def test_extraction_dedupes_entities_and_relations():
     graph = extract_graph(CHUNKS, FakeLLM(data=extraction_reply))
     assert sorted(e.key for e in graph.entities) == [
@@ -140,7 +156,7 @@ class TruncatingLLM(FakeLLM):
         self.fits = fits
 
     def complete_json(self, messages, schema, **kwargs):
-        if f"[{self.fits + 1}]" in messages[0]["content"]:
+        if f'<document id="{self.fits + 1}">' in messages[0]["content"]:
             self.calls.append(messages)
             raise LLMTruncatedError("Ran out of tokens before answering")
         return super().complete_json(messages, schema, **kwargs)
@@ -183,7 +199,7 @@ def test_batches_run_in_waves_and_merge_in_document_order(monkeypatch):
     ]
 
     def reply(messages):
-        name = messages[0]["content"].split("[1] ")[1].split(" ")[0]  # "Service2"
+        name = messages[0]["content"].split('<document id="1">\n')[1].split(" ")[0]  # "Service2"
         return {
             "entities": [{"name": name, "type": "service"}, {"name": "Hub", "type": "service"}],
             "relationships": [
@@ -195,9 +211,13 @@ def test_batches_run_in_waves_and_merge_in_document_order(monkeypatch):
     graph = extract_graph(chunks, llm)
     assert [e.name for e in graph.entities] == ["Service1", "Hub", "Service2", "Service3"]
     assert [r.chunk_id for r in graph.relations] == ["c1", "c2", "c3"]
-    third = next(c[0]["content"] for c in llm.calls if "[1] Service3" in c[0]["content"])
+    third = next(
+        c[0]["content"] for c in llm.calls if '<document id="1">\nService3' in c[0]["content"]
+    )
     assert "Service1" in third.split("Chunks:")[0]  # learned from the first wave
-    first_wave = [c[0]["content"] for c in llm.calls if "[1] Service3" not in c[0]["content"]]
+    first_wave = [
+        c[0]["content"] for c in llm.calls if '<document id="1">\nService3' not in c[0]["content"]
+    ]
     assert all("Entities already found" not in prompt for prompt in first_wave)
 
 
@@ -263,6 +283,9 @@ def test_graph_store_traverses_with_direction_and_owner_filter(graph_store):
     assert "Auth Service <-DEPENDS_ON Payments" in described
     assert "Auth Service <-DEPENDS_ON Payments <-CALLS Orders" in described  # 2 hops
     assert all("Bob DB" not in p.nodes for p in paths)  # other owner's graph is invisible
+
+    only_depends = graph_store.paths_from(linked, "alice", ["arch"], ["DEPENDS_ON"])
+    assert {r for p in only_depends for r in p.relations} == {"<-DEPENDS_ON"}
 
 
 def test_graph_store_delete_removes_only_that_document(graph_store):

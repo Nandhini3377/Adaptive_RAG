@@ -18,6 +18,7 @@ hand before trusting results (PRD: "checked by hand").
 """
 
 import json
+import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -47,7 +48,9 @@ class Question:
     documents: list[str]
     gold_answer: str
     answer_keywords: list[str]  # all must appear (case-insensitive) in a correct answer
-    gold_evidence: list[str]  # exact sentences the retrieved chunks should contain
+    # Exact sentences the retrieved chunks should contain. A list item is one fact written
+    # several ways (sentence or table row); finding any one of them counts.
+    gold_evidence: list[str | list[str]]
     answerable: bool = True
     notes: str = ""
     extra: dict = field(default_factory=dict)
@@ -62,6 +65,16 @@ def depends_sentence(service: dict) -> str:
     if not deps:
         return f"The {service['name']} does not depend on any other service."
     return f"The {service['name']} depends on {_join(['the ' + d for d in deps])}."
+
+
+def depends_row(service: dict) -> str:
+    """The same fact as depends_sentence, as its dependency-table row in architecture.docx."""
+    deps = ", ".join(service["depends_on"]) or "none"
+    return f"| {service['name']} | {service['team']} | {deps} |"
+
+
+def depends_evidence(service: dict) -> list[str]:
+    return [depends_sentence(service), depends_row(service)]
 
 
 def purpose_sentence(service: dict) -> str:
@@ -305,7 +318,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
         docs: list[str],
         answer: str,
         keywords: Iterable[str],
-        evidence: Iterable[str],
+        evidence: Iterable[str | list[str]],
         answerable: bool = True,
     ) -> None:
         questions.append(
@@ -493,7 +506,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
             [ARCHITECTURE],
             ", ".join(s["depends_on"]),
             s["depends_on"],
-            [depends_sentence(s)],
+            [depends_evidence(s)],
         )
     for name in ["Auth Service", "Postgres Cluster", "Event Bus", "User Directory"]:
         users = dependents(name)
@@ -503,7 +516,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
             [ARCHITECTURE],
             ", ".join(users),
             users,
-            [depends_sentence(services[u]) for u in users],
+            [depends_evidence(services[u]) for u in users],
         )
     for name in ["Ledger", "Feature Store"]:
         s = services[name]
@@ -526,7 +539,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
         [ARCHITECTURE],
         ", ".join(owning),
         owning,
-        [depends_sentence(services[a]) for a in affected],
+        [depends_evidence(services[a]) for a in affected],
     )
     for name in ["Postgres Cluster", "Event Bus", "Auth Service"]:
         users = dependents(name)
@@ -537,7 +550,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
             [ARCHITECTURE],
             ", ".join(team_names),
             team_names,
-            [depends_sentence(services[u]) for u in users],
+            [depends_evidence(services[u]) for u in users],
         )
     for name in ["User Directory", "Token Vault", "Feature Store"]:
         indirect = [d for d in all_dependents(name) if d not in dependents(name)]
@@ -547,7 +560,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
             [ARCHITECTURE],
             ", ".join(indirect),
             indirect,
-            [depends_sentence(services[d]) for d in indirect],
+            [depends_evidence(services[d]) for d in indirect],
         )
     for name in ["Fraud Check", "Inventory Service", "Token Vault"]:
         team = teams[services[name]["team"]]
@@ -568,7 +581,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
         [ARCHITECTURE],
         "Both depend on the Auth Service; ...",
         ["Auth Service", "Ledger", "Inventory"],
-        [depends_sentence(a), depends_sentence(b)],
+        [depends_evidence(a), depends_evidence(b)],
     )
     add(
         "comparison",
@@ -600,7 +613,7 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
         [ARCHITECTURE],
         "Ledger: Postgres Cluster; Reporting: Ledger and Event Bus",
         ["Postgres", "Event Bus"],
-        [depends_sentence(services["Ledger"]), depends_sentence(services["Reporting Service"])],
+        [depends_evidence(services["Ledger"]), depends_evidence(services["Reporting Service"])],
     )
 
     # --- unanswerable (5): the system should refuse
@@ -617,15 +630,19 @@ def build_questions(spec: dict, handbook_facts: dict[str, str]) -> list[Question
 
 
 def main() -> None:
+    # --questions-only: keep the documents as they are. A rewritten .docx gets a new hash,
+    # so the Evaluation Lab would re-index (and re-extract the graph) for nothing.
+    questions_only = "--questions-only" in sys.argv
     spec = yaml.safe_load(SPEC.read_text(encoding="utf-8"))
     DOCS.mkdir(parents=True, exist_ok=True)
     QUESTIONS.parent.mkdir(parents=True, exist_ok=True)
 
     handbook, facts = handbook_md(spec)
-    (DOCS / HANDBOOK).write_text(handbook, encoding="utf-8")
-    (DOCS / SECURITY).write_text(security_html(spec), encoding="utf-8")
-    architecture_docx(spec, DOCS / ARCHITECTURE)
-    (DOCS / RUNBOOK).write_text(runbook_md(spec), encoding="utf-8")
+    if not questions_only:
+        (DOCS / HANDBOOK).write_text(handbook, encoding="utf-8")
+        (DOCS / SECURITY).write_text(security_html(spec), encoding="utf-8")
+        architecture_docx(spec, DOCS / ARCHITECTURE)
+        (DOCS / RUNBOOK).write_text(runbook_md(spec), encoding="utf-8")
 
     questions = build_questions(spec, facts)
     with QUESTIONS.open("w", encoding="utf-8") as out:
@@ -635,7 +652,8 @@ def main() -> None:
     counts: dict[str, int] = {}
     for question in questions:
         counts[question.type] = counts.get(question.type, 0) + 1
-    print(f"Wrote 4 documents to {DOCS} and {len(questions)} questions: {counts}")
+    wrote = "Kept the documents" if questions_only else f"Wrote 4 documents to {DOCS}"
+    print(f"{wrote}; wrote {len(questions)} questions: {counts}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from statistics import mean
 
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLM, LLMError
+from adaptive_rag.llm.safety import DATA_RULE, quoted
 from adaptive_rag.schemas import Answer, SearchHit
 
 # ---------------------------------------------------------------- relevance
@@ -99,6 +100,7 @@ chunk states (for example "12 sick days is not allowed" follows from "sick leave
 10 days"). A claim is NOT supported when no chunk states or implies it.
 List at most 6 claims, each once. Do not list sentences that only say what the
 documents do not mention.
+{data_rule}
 
 Evidence:
 {evidence}
@@ -128,12 +130,14 @@ def check_grounding(answer: Answer, llm: LLM) -> GroundingResult:
         return GroundingResult(1.0, [], 0, 0.0)
     if not answer.citations:  # nothing cited, so nothing can be checked: not grounded
         return GroundingResult(0.0, [answer.text], 0, 0.0)
-    evidence = "\n\n".join(f"[{c.number}] {c.text}" for c in answer.citations)
+    evidence = "\n\n".join(quoted(c.number, c.text) for c in answer.citations)
     response = llm.complete_json(
         [
             {
                 "role": "user",
-                "content": _GROUNDING_PROMPT.format(evidence=evidence, answer=answer.text),
+                "content": _GROUNDING_PROMPT.format(
+                    evidence=evidence, answer=answer.text, data_rule=DATA_RULE
+                ),
             }
         ],
         _GROUNDING_SCHEMA,

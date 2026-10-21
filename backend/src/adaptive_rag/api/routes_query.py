@@ -58,6 +58,7 @@ class QueryOut(BaseModel):
     graph_paths: list[GraphPath]
     scores: Scores
     quality: RetrievalQuality | None  # precision and relative recall; None when not measured
+    comparison: str  # why every mode was compared, or why the router's pick was used alone
     regenerated: bool
     refused_reason: str
     documents: dict[str, str]  # id -> filename, for showing evidence sources
@@ -146,6 +147,7 @@ def query(body: QueryIn, user: UserDep, session: SessionDep) -> QueryOut:
             unsupported_claims=state["unsupported_claims"],
         ),
         quality=state["quality"],
+        comparison=state["comparison_reason"],
         regenerated=state["regenerated"],
         refused_reason=state["refused_reason"],
         documents={d.id: d.filename for d in documents},

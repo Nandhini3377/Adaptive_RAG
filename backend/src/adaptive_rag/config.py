@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     neo4j_password: SecretStr = SecretStr("")
     graph_max_hops: int = 2
     graph_max_paths: int = 50
+    # Top-k slots kept for the chunks graph paths cite, ahead of the reranker. The reranker
+    # drops them otherwise: a dependency table row doesn't read like the question.
+    graph_pinned_chunks: int = 2
     # Chunk text per extraction LLM call. Small on purpose: a dense 8K-character batch
     # made the model reason past its token budget, and each failed call takes minutes
     # and is billed. A batch that still does not fit is split in half and retried.
@@ -122,6 +125,11 @@ class Settings(BaseSettings):
     many_relationships_density: float = 1.5  # relationships per entity in the sample
     many_relationships_cross_ref_rate: float = 2.0  # per 1,000 words
     many_relationships_phrase_rate: float = 3.0  # per 1,000 words
+    # Relationship phrases this dense count on their own, without cross-references.
+    # Measured: a 19-page architecture doc stated 60 services' dependencies as plain
+    # "X depends on Y" sentences (13.5 per 1,000 words) with almost no "see Section N"
+    # (0.3), so the AND rule refused the graph that measured best. 3x the phrase limit.
+    many_relationships_phrase_only_rate: float = 9.0  # per 1,000 words
     small_plain_max_pages: int = 10
     small_plain_max_identifier_density: float = 1.0  # per 1,000 words
     small_plain_max_table_share: float = 0.05
@@ -142,7 +150,19 @@ class Settings(BaseSettings):
     # Precision and relative recall for each question: one extra LLM call, plus a search
     # with every other mode the documents have (see query/quality.py)
     retrieval_quality_enabled: bool = True
+    # When to search with every indexed mode and judge them (the `select` step). It is one
+    # extra LLM call, and on a small server most of the wait: measured 5.7 s of 8.5 s on
+    # AWS, for a multi-hop question. "when_needed": only for the question types below, or
+    # when the router's pick found no answer. "always": every question. "never": off.
+    compare_modes: Literal["always", "when_needed", "never"] = "when_needed"
+    # Empty: the router's pick is used for every question type. Measured on both eval sets,
+    # the router was already best on 14 of 14 (large) and 9 of 10 (demo) multi-hop questions,
+    # so comparing by type cost time and an LLM call for no gain.
+    compare_modes_for: list[str] = []
     quality_max_tokens: int = 300
+    # Chunks the judge reads when one mode is measured on its own: the top k plus the rest
+    # of what the mode fetched. More = a truer recall, but a longer (costlier) judge call.
+    quality_pool_size: int = 20
     # Evaluation Lab: a pasted snippet is indexed in every mode, so keep it small
     lab_max_chars: int = 8_000
 

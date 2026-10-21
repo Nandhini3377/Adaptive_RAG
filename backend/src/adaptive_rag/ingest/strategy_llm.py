@@ -136,7 +136,7 @@ def rule_checks(profile: DocumentProfile) -> str:
     exact_terms = profile.identifier_density >= s.exact_terms_identifier_density
     lines = [
         f"- Many relationships: {yes[many_relationships(profile)]} "
-        "(the first check alone, or the second AND the third)",
+        "(the first check alone, or the second AND the third, or the fourth alone)",
         check(
             "relationships per entity",
             profile.relationship_density,
@@ -154,6 +154,12 @@ def rule_checks(profile: DocumentProfile) -> str:
             profile.relationship_phrase_rate,
             ">",
             s.many_relationships_phrase_rate,
+        ),
+        check(
+            "relationship phrases per 1,000 words (counts alone)",
+            profile.relationship_phrase_rate,
+            ">",
+            s.many_relationships_phrase_only_rate,
         ),
         f"- Small and plain: {yes[is_small_plain(profile)]} (all three)",
         check("pages", profile.page_count, "<", s.small_plain_max_pages),

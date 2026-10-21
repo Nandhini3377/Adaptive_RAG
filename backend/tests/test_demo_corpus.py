@@ -49,8 +49,10 @@ def test_sixty_questions_in_the_prd_mix():
 @pytest.mark.parametrize("question", QUESTIONS, ids=lambda q: q["id"])
 def test_every_gold_sentence_sits_whole_inside_one_chunk(question, chunks_by_doc):
     chunks = [c for doc in question["documents"] for c in chunks_by_doc[doc]]
-    for sentence in question["gold_evidence"]:
-        assert any(sentence in " ".join(c.text.split()) for c in chunks), sentence
+    for evidence in question["gold_evidence"]:
+        forms = [evidence] if isinstance(evidence, str) else evidence
+        for form in forms:  # every way a fact is written must be findable
+            assert any(form in " ".join(c.text.split()) for c in chunks), form
 
 
 def test_unanswerable_questions_have_no_evidence():

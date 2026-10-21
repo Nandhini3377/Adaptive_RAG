@@ -5,10 +5,11 @@ import uuid
 import pytest
 
 from adaptive_rag.models.reranker import rerank
+from adaptive_rag.retrieval.base import rerank_hits
 from adaptive_rag.retrieval.fusion import reciprocal_rank_fusion
 from adaptive_rag.retrieval.hybrid import HybridRetriever
 from adaptive_rag.retrieval.vector import VectorRetriever
-from adaptive_rag.schemas import Chunk, SearchHit
+from adaptive_rag.schemas import Chunk, GraphPath, SearchHit
 from adaptive_rag.store.bm25_store import BM25Store, tokenize
 from adaptive_rag.store.vector_store import VectorStore
 
@@ -110,6 +111,34 @@ def test_rrf_rewards_chunks_found_by_both_lists():
 def test_rrf_lists_each_chunk_once():
     fused = reciprocal_rank_fusion([[hit("a")], [hit("a")], [hit("a")]])
     assert len(fused) == 1
+
+
+def alphabetical(_question, hits, top_n):
+    """A stand-in reranker: alphabetical order, so the expected result is obvious."""
+    return sorted(hits, key=lambda h: h.chunk.id)[:top_n]
+
+
+def test_rerank_hits_keeps_the_chunk_most_graph_edges_cite():
+    """'table' states both hops of the path but reranks last; it keeps a top slot."""
+    hits = [hit(c) for c in ["a", "b", "c", "d", "table"]]
+    paths = [
+        GraphPath(nodes=["X", "Y"], relations=["<-DEPENDS_ON"], chunk_ids=["d"]),
+        GraphPath(nodes=["X", "Y", "Z"], relations=["<-DEPENDS_ON"] * 2, chunk_ids=["table"] * 2),
+    ]
+    top = rerank_hits(alphabetical, "q", hits, 3, paths)
+    assert [h.chunk.id for h in top] == ["a", "d", "table"]  # both kept, reranker order kept
+
+
+def test_rerank_hits_changes_nothing_when_graph_evidence_already_made_the_cut():
+    hits = [hit(c) for c in ["a", "b", "c", "d"]]
+    paths = [GraphPath(nodes=["X", "Y"], relations=["<-DEPENDS_ON"], chunk_ids=["b"])]
+    top = rerank_hits(alphabetical, "q", hits, 3, paths)
+    assert [h.chunk.id for h in top] == ["a", "b", "c"]
+
+
+def test_rerank_hits_without_paths_is_plain_reranking():
+    hits = [hit(c) for c in ["c", "a", "b"]]
+    assert [h.chunk.id for h in rerank_hits(alphabetical, "q", hits, 2)] == ["a", "b"]
 
 
 # ----------------------------------------------------------------- hybrid

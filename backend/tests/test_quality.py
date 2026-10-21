@@ -168,7 +168,8 @@ def pipeline_llm(judge_error: bool = False) -> FakeLLM:
     return Scripted("Twenty days [1].", data=data)
 
 
-def test_pipeline_measures_the_used_mode_against_the_other_modes():
+def test_pipeline_measures_the_used_mode_against_the_other_modes(monkeypatch):
+    monkeypatch.setattr("adaptive_rag.query.pipeline.settings.compare_modes", "always")
     retrievers = {
         "vector": FixedRetriever("vector", ["a", "b"]),
         "hybrid": FixedRetriever("hybrid", ["b", "x"]),
@@ -251,7 +252,8 @@ def test_a_mode_chosen_by_hand_is_never_switched():
     assert chosen.quality.modes[1].relevant == 1  # still measured
 
 
-def test_the_answer_is_written_from_the_chosen_modes_chunks():
+def test_the_answer_is_written_from_the_chosen_modes_chunks(monkeypatch):
+    monkeypatch.setattr("adaptive_rag.query.pipeline.settings.compare_modes", "always")
     retrievers = {
         "vector": FixedRetriever("vector", ["a", "b"]),
         "keyword": FixedRetriever("keyword", ["a"]),
@@ -264,3 +266,93 @@ def test_the_answer_is_written_from_the_chosen_modes_chunks():
     assert state["mode_used"] == "keyword"  # same relevant chunk, no noise
     answer_prompt = next(c for c in llm.calls if c[0]["role"] == "system")[1]["content"]
     assert "text of a" in answer_prompt and "text of b" not in answer_prompt
+
+
+# --------------------------------------------- compare only when needed (default)
+
+
+def test_a_simple_question_uses_the_router_pick_without_comparing():
+    """No search with other modes; the router's pick is still measured on its own."""
+    hybrid = FixedRetriever("hybrid", ["b"])
+    retrievers = {"vector": FixedRetriever("vector", ["a"]), "hybrid": hybrid}
+    state, meter = QueryPipeline(retrievers, pipeline_llm(), keep_order).run(
+        "How many leave days?", "u", ["d"], indexes={"vector", "bm25"}
+    )
+    assert state["mode_used"] == "vector"
+    assert state["quality"].recall_scope == "candidates"
+    assert "simple question" in state["comparison_reason"]
+    assert hybrid.queries == []  # the other mode never searched
+    assert meter.calls == 3  # judge (one mode's own chunks) + answer + grounding
+
+
+def test_a_multi_hop_question_uses_the_router_pick_by_default():
+    """Measured: the router was already best on multi-hop questions, so no comparison."""
+    vector = FixedRetriever("vector", ["a"])
+    retrievers = {"vector": vector, "hybrid": FixedRetriever("hybrid", ["b"])}
+    state, meter = QueryPipeline(retrievers, pipeline_llm(), keep_order).run(
+        "Which teams own services affected by the payment migration?",
+        "u",
+        ["d"],
+        indexes={"vector", "bm25"},
+    )
+    assert state["classification"].query_type == "multi_hop"
+    assert state["mode_used"] == "hybrid"  # no graph built: the router's fallback pick
+    assert vector.queries == []  # not compared
+    assert state["quality"].recall_scope == "candidates" and meter.calls == 3
+
+
+def test_question_types_can_be_set_to_compare_every_mode(monkeypatch):
+    monkeypatch.setattr("adaptive_rag.query.pipeline.settings.compare_modes_for", ["multi_hop"])
+    retrievers = {
+        "vector": FixedRetriever("vector", ["a"]),
+        "hybrid": FixedRetriever("hybrid", ["b", "x"]),
+    }
+    state, _ = QueryPipeline(retrievers, pipeline_llm(), keep_order).run(
+        "Which teams own services affected by the payment migration?",
+        "u",
+        ["d"],
+        indexes={"vector", "bm25"},
+    )
+    assert state["classification"].query_type == "multi_hop"
+    assert state["quality"] is not None
+    assert "multi hop" in state["comparison_reason"]
+
+
+def test_no_answer_from_the_router_pick_tries_every_mode_before_rewriting():
+    replies = iter(["NO_ANSWER", "Twenty days [1]."])
+
+    def data(messages):
+        content = messages[0]["content"]
+        if "numbered passages" in content:
+            return {"relevant": [2]}  # only the keyword chunk helps
+        if "Check an answer" in content:
+            return {"claims": [{"claim": "x", "supported": True}]}
+        return {}
+
+    retrievers = {
+        "vector": FixedRetriever("vector", ["a"]),
+        "keyword": FixedRetriever("keyword", ["k"]),
+    }
+    llm = FakeLLM(reply=lambda _m: next(replies), data=data)
+    state, _ = QueryPipeline(retrievers, llm, keep_order).run(
+        "How many leave days?", "u", ["d"], indexes={"vector", "bm25"}
+    )
+    assert state["weak"] and state["compared"]
+    assert state["mode_used"] == "keyword"
+    assert state["rewrites"] == []  # the other mode answered, no rewrite needed
+    assert state["answer"].text == "Twenty days [1]."
+    assert "found no answer" in state["comparison_reason"]
+
+
+def test_one_mode_is_measured_against_everything_it_fetched():
+    """Precision over the top k; recall = relevant in the top k / relevant fetched."""
+    from adaptive_rag.query.quality import measure_single
+
+    used = [hit("a"), hit("b")]
+    candidates = [hit("a"), hit("b"), hit("c"), hit("d")]
+    llm = FakeLLM(data={"relevant": [1, 3]})  # pool order a, b, c, d: a and c help
+    quality = measure_single("q", "vector", used, candidates, llm)
+    assert quality.precision == 0.5  # a of a, b
+    assert quality.relative_recall == 0.5  # a of a, c: ranking dropped c
+    assert (quality.pool_size, quality.relevant_in_pool) == (4, 2)
+    assert quality.recall_scope == "candidates" and quality.compared_modes == []

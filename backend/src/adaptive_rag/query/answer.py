@@ -4,6 +4,7 @@ import re
 
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLM, LLMTruncatedError, Message
+from adaptive_rag.llm.safety import DATA_RULE, quoted
 from adaptive_rag.schemas import Answer, Citation, SearchHit
 
 INSUFFICIENT_EVIDENCE = (
@@ -14,7 +15,9 @@ _NO_ANSWER_TOKEN = "NO_ANSWER"
 
 _SYSTEM_PROMPT = f"""You answer questions about the user's documents.
 Rules:
-- Use ONLY the numbered evidence below. Do not use outside knowledge.
+- Use ONLY the evidence below: the <document> blocks, each with an id to cite.
+  Do not use outside knowledge.
+{DATA_RULE}
 - Write full sentences, and end each factual sentence with its citation, like [1] or [1][3].
 - For a plain question, give the fact in one or two sentences.
 - When the user asks whether something in their own situation is allowed or needed,
@@ -41,7 +44,7 @@ _CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 def build_messages(question: str, hits: list[SearchHit], strict: bool = False) -> list[Message]:
     """The prompt: rules, then numbered evidence, then the question."""
     evidence = "\n\n".join(
-        f"[{n}] {_source_label(hit)}\n{hit.chunk.text}" for n, hit in enumerate(hits, start=1)
+        quoted(n, hit.chunk.text, _source_label(hit)) for n, hit in enumerate(hits, start=1)
     )
     system = _SYSTEM_PROMPT + (_STRICT_SUFFIX if strict else "")
     return [
@@ -97,10 +100,10 @@ def cited_chunks(text: str, hits: list[SearchHit]) -> list[Citation]:
 
 
 def _source_label(hit: SearchHit) -> str:
-    """'(Section: Leave Policy, page 3)' so the model can mention where facts are."""
+    """'Section: Leave Policy, page 3' so the model can mention where facts are."""
     parts = []
     if hit.chunk.section:
         parts.append(f"Section: {hit.chunk.section}")
     if hit.chunk.page:
         parts.append(f"page {hit.chunk.page}")
-    return f"({', '.join(parts)})" if parts else ""
+    return ", ".join(parts).replace('"', "'")

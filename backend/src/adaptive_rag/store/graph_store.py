@@ -153,22 +153,56 @@ class GraphStore:
             return [(row["id"], row["name"]) for row in rows]
 
     def link_entities(self, question: str, owner_id: str, document_ids: list[str]) -> list[str]:
-        """Entity linking: entities whose name appears in the question (longest first)."""
+        """Entity linking: entities whose name appears in the question (longest first).
+
+        Generic nouns the extractor sometimes returns ("services", "none") are skipped:
+        they match many questions and fill the path limit with unrelated edges.
+        """
         text = question.lower()
         found: list[tuple[int, str]] = []
         for entity_id, name in self.entity_names(owner_id, document_ids):
+            if _is_generic(name):
+                continue
             name_lower = name.lower()
             if re.search(rf"\b{re.escape(name_lower)}\b", text):
                 found.append((len(name_lower), entity_id))
         return [entity_id for _, entity_id in sorted(found, reverse=True)]
 
+    def relation_types(self, owner_id: str, document_ids: list[str]) -> list[str]:
+        """Every relation type in the owner's chosen documents, e.g. DEPENDS_ON."""
+        with self._driver.session() as session:
+            rows = session.run(
+                """
+                MATCH (a:Entity)-[r:RELATES]->(:Entity)
+                WHERE a.owner_id = $owner_id AND a.document_id IN $document_ids
+                RETURN DISTINCT r.type AS type
+                """,
+                owner_id=owner_id,
+                document_ids=document_ids,
+            )
+            return [row["type"] for row in rows]
+
     def paths_from(
-        self, entity_ids: list[str], owner_id: str, document_ids: list[str]
+        self,
+        entity_ids: list[str],
+        owner_id: str,
+        document_ids: list[str],
+        relation_types: list[str] | None = None,
     ) -> list[GraphPath]:
-        """Paths up to `graph_max_hops` away from the linked entities, in either direction."""
+        """Paths up to `graph_max_hops` away from the linked entities, in either direction.
+
+        With `relation_types`, every edge on the path must have one of those types, so a
+        "depends on" question walks dependency chains instead of spending the path limit
+        on one-hop OWNS / USED_BY edges.
+        """
         if not entity_ids:
             return []
         hops = int(settings.graph_max_hops)  # Cypher cannot take hop counts as parameters
+        type_filter = (
+            "AND all(r IN relationships(p) WHERE r.type IN $relation_types)"
+            if relation_types
+            else ""
+        )
         with self._driver.session() as session:
             rows = session.run(
                 f"""
@@ -176,6 +210,7 @@ class GraphStore:
                 WHERE start.id IN $entity_ids
                   AND all(n IN nodes(p) WHERE n.owner_id = $owner_id
                                           AND n.document_id IN $document_ids)
+                  {type_filter}
                 RETURN p
                 ORDER BY length(p)
                 LIMIT $limit
@@ -183,6 +218,7 @@ class GraphStore:
                 entity_ids=entity_ids,
                 owner_id=owner_id,
                 document_ids=document_ids,
+                relation_types=relation_types or [],
                 limit=settings.graph_max_paths,
             )
             return [_to_graph_path(row["p"]) for row in rows]
@@ -218,6 +254,11 @@ class GraphStore:
                 id=document_id,
             ).single()
             return {"entities": row["entities"], "relations": row["relations"]}
+
+
+def _is_generic(name: str) -> bool:
+    """A single lower-case word ("services") is a common noun, not a named entity."""
+    return " " not in name.strip() and name.strip().islower()
 
 
 def _to_graph_path(path) -> GraphPath:  # type: ignore[no-untyped-def]

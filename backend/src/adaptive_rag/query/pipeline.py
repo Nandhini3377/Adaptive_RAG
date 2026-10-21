@@ -9,10 +9,14 @@
                                           no retries left -> done    regenerate (strict) -> ground
                                           ("not enough evidence")    still unsupported -> refuse
 
-The router predicts a mode from the question type; `select` then checks it. It searches
-with every indexed mode, one LLM call judges the pooled chunks, and the answer is written
-from the mode with the best evidence (see query/quality.py: select_mode). The same call
-gives every mode's precision and relative recall for the "Why" panel.
+The router predicts a mode from the question type and that pick is used. `select`
+checks it only when needed (settings.compare_modes): for hard question types, or when
+the answer from the router's pick found nothing (`fallback`, before any rewrite). Then it
+searches with every indexed mode, one LLM call judges the pooled chunks, and the answer
+is written from the mode with the best evidence (see query/quality.py: select_mode). The
+same call gives every mode's precision and relative recall for the "Why" panel.
+
+    generate -- no answer, not compared yet --> fallback -> select -> evaluate -> generate
 
 The LLM, not the reranker, decides whether the evidence answers the question. The
 reranker only sorts chunks: its absolute score is unreliable as a pass/fail gate
@@ -40,9 +44,9 @@ from adaptive_rag.query.correction import (
     relevance_score,
     rewrite_query,
 )
-from adaptive_rag.query.quality import RetrievalQuality, select_mode
+from adaptive_rag.query.quality import RetrievalQuality, measure_single, select_mode
 from adaptive_rag.query.router import route
-from adaptive_rag.retrieval.base import Retriever
+from adaptive_rag.retrieval.base import Retriever, rerank_hits
 from adaptive_rag.schemas import (
     Answer,
     Classification,
@@ -85,6 +89,9 @@ class QueryState(TypedDict, total=False):
     refused_reason: str
     quality: RetrievalQuality | None
     mode_used: Mode  # the mode the answer was written from (select may change the router's)
+    compared: bool  # select searched every mode at least once
+    comparison_reason: str  # why it did, or why it used the router's pick alone
+    weak: bool  # the router's pick produced no answer
     timings: dict[str, float]
 
 
@@ -106,6 +113,7 @@ class QueryPipeline:
     ) -> tuple[QueryState, MeteredLLM]:
         """Answer one question; returns the final state and the query's LLM usage."""
         meter = MeteredLLM(self._llm)
+        self._meter = meter
         graph = self._build(meter)
         state = graph.invoke(
             {
@@ -124,6 +132,9 @@ class QueryPipeline:
                 "unsupported_claims": [],
                 "refused_reason": "",
                 "quality": None,
+                "compared": False,
+                "comparison_reason": "",
+                "weak": False,
                 "timings": {},
             }
         )
@@ -165,15 +176,23 @@ class QueryPipeline:
 
         def rerank_step(state: QueryState) -> dict[str, Any]:
             # Rerank against the original question: that's what the answer must address
-            return {
-                "reranked": self._rerank(state["question"], state["candidates"], settings.top_k)
-            }
+            mode = state["routing"].mode
+            paths = state["graph_paths"] if "graph" in mode else None
+            reranked = rerank_hits(
+                self._rerank, state["question"], state["candidates"], settings.top_k, paths
+            )
+            return {"reranked": reranked}
 
         def select_step(state: QueryState) -> dict[str, Any]:
             routed = state["routing"].mode
-            keep = {"mode_used": routed, "quality": None}
-            if not settings.retrieval_quality_enabled:
-                return keep
+            reason = self._comparison_reason(state)
+            if reason is None:  # the router's pick alone, still measured on its own
+                return {
+                    "mode_used": routed,
+                    "quality": self._measure_single(state, routed),
+                    "comparison_reason": self._skip_reason(),
+                }
+            keep = {"mode_used": routed, "quality": None, "comparison_reason": reason}
             others = {m: r for m, r in self._retrievers.items() if m != routed}
             try:
                 selection = select_mode(
@@ -196,6 +215,8 @@ class QueryPipeline:
                 "mode_used": selection.mode,
                 "quality": selection.quality,
                 "reranked": selection.hits,
+                "compared": True,
+                "comparison_reason": reason,
             }
             if "graph" not in selection.mode:  # paths only explain graph evidence
                 update["graph_paths"] = []
@@ -251,10 +272,15 @@ class QueryPipeline:
                 "refused_reason": "answer still had unsupported claims after a strict retry",
             }
 
+        def fallback_step(_state: QueryState) -> dict[str, Any]:
+            return {"weak": True}
+
         def after_generate(state: QueryState) -> str:
             if not state["answer"].insufficient_evidence:
                 return "ground"
-            # The model could not answer from this evidence: search again with a rewrite
+            # The router's pick found nothing: first try the other modes, then rewrite
+            if self._can_fall_back(state):
+                return "fallback"
             return "rewrite" if needs_retry(True, state["attempt"]) else "done"
 
         def after_ground(state: QueryState) -> str:
@@ -275,6 +301,7 @@ class QueryPipeline:
             ("ground", ground_step),
             ("regenerate", regenerate_step),
             ("refuse", refuse_step),
+            ("fallback", fallback_step),
         ]:
             graph.add_node(name, timed(name, step))
         graph.add_edge(START, "classify")
@@ -287,8 +314,9 @@ class QueryPipeline:
         graph.add_conditional_edges(
             "generate",
             after_generate,
-            {"ground": "ground", "rewrite": "rewrite", "done": END},
+            {"ground": "ground", "rewrite": "rewrite", "fallback": "fallback", "done": END},
         )
+        graph.add_edge("fallback", "select")
         graph.add_conditional_edges("rewrite", after_rewrite, {"retrieve": "retrieve", "done": END})
         graph.add_conditional_edges(
             "ground",
@@ -298,3 +326,48 @@ class QueryPipeline:
         graph.add_edge("regenerate", "ground")
         graph.add_edge("refuse", END)
         return graph.compile()
+
+    def _comparison_reason(self, state: QueryState) -> str | None:
+        """Why `select` should search every mode now, or None to use the router's pick."""
+        policy = settings.compare_modes
+        if not settings.retrieval_quality_enabled or policy == "never":
+            return None
+        if policy == "always":
+            return "every question is checked against every mode (compare_modes=always)"
+        if len(self._retrievers) < 2:
+            return None  # nothing to compare with
+        if state.get("weak"):
+            return "the router's pick found no answer, so every mode was tried"
+        query_type = state["classification"].query_type
+        if query_type in settings.compare_modes_for:
+            return f"{query_type.replace('_', ' ')} question, so every mode was compared"
+        return None
+
+    def _measure_single(self, state: QueryState, mode: Mode) -> RetrievalQuality | None:
+        """Precision and recall of the router's pick against its own candidates."""
+        if not settings.retrieval_quality_enabled:
+            return None
+        try:
+            return measure_single(
+                state["question"], mode, state["reranked"], state["candidates"], self._meter
+            )
+        except LLMError:  # the answer matters more than its score
+            return None
+
+    def _skip_reason(self) -> str:
+        if not settings.retrieval_quality_enabled or settings.compare_modes == "never":
+            return "mode comparison is switched off"
+        if len(self._retrievers) < 2:
+            return "only one search mode is built"
+        return "simple question: the router's pick was used without comparing"
+
+    def _can_fall_back(self, state: QueryState) -> bool:
+        """Try every mode once before rewriting, when only the router's pick was used."""
+        return (
+            settings.retrieval_quality_enabled
+            and settings.compare_modes == "when_needed"
+            and len(self._retrievers) > 1
+            and state["requested_mode"] is None  # a mode chosen by hand stays
+            and not state.get("compared")
+            and not state.get("weak")
+        )

@@ -6,7 +6,7 @@ import { type FormEvent, Fragment, type KeyboardEvent, useEffect, useRef, useSta
 
 import { api } from "@/lib/api";
 import { MODE_LABELS, STRATEGY_LABELS, inr, label, ms, pct } from "@/lib/format";
-import { type DocumentOut, type IndexName, MODE_INDEXES, type Mode, type QueryOut } from "@/lib/types";
+import type { DocumentOut, QueryOut } from "@/lib/types";
 
 import {
   ArrowRightIcon,
@@ -15,9 +15,6 @@ import {
   ChevronDownIcon,
   CopyIcon,
   FileIcon,
-  GraphIcon,
-  HashIcon,
-  LayersIcon,
   Logo,
   PlusIcon,
   SparkIcon,
@@ -31,21 +28,11 @@ interface Turn {
   error?: string;
 }
 
-const MODES: (Mode | "auto")[] = ["auto", "vector", "keyword", "hybrid", "graph", "graph_hybrid"];
-
-// One example per question type: a fact, an exact code, a relationship
-const EXAMPLES = [
-  { kind: "A fact", question: "How many leave days do we get?", icon: LayersIcon },
-  { kind: "An exact code", question: "What is AUTH-403?", icon: HashIcon },
-  { kind: "A relationship", question: "What depends on the Auth Service?", icon: GraphIcon },
-];
-
 export function ChatView() {
   const preselected = useSearchParams().get("doc");
   // null until the first load finishes
   const [documents, setDocuments] = useState<DocumentOut[] | null>(null);
   const [selected, setSelected] = useState<string[]>(preselected ? [preselected] : []);
-  const [mode, setMode] = useState<Mode | "auto">("auto");
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [asking, setAsking] = useState(false);
@@ -67,20 +54,7 @@ export function ChatView() {
   }, [turns.length]);
 
   const ready = documents ?? [];
-  // Same rule as the backend (router.available_modes): a mode needs all its indexes on
-  // every document being searched.
   const searched = selected.length ? ready.filter((d) => selected.includes(d.id)) : ready;
-  const built = (doc: DocumentOut): IndexName[] => [
-    ...(doc.has_vector ? (["vector"] as const) : []),
-    ...(doc.has_bm25 ? (["bm25"] as const) : []),
-    ...(doc.graph_status === "ready" ? (["graph"] as const) : []),
-  ];
-  const shared = (["vector", "bm25", "graph"] as IndexName[]).filter(
-    (index) => searched.length > 0 && searched.every((doc) => built(doc).includes(index)),
-  );
-  const modes = MODES.filter((m) => m === "auto" || MODE_INDEXES[m].every((index) => shared.includes(index)));
-  // A mode that stops existing (after changing the documents) falls back to automatic
-  const activeMode = modes.includes(mode) ? mode : "auto";
 
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -91,11 +65,8 @@ export function ChatView() {
     setTurns((current) => [...current, { question: text }]);
     let turn: Turn;
     try {
-      const result = await api.query(
-        text,
-        selected.length ? selected : undefined,
-        activeMode === "auto" ? undefined : activeMode,
-      );
+      // No mode is sent: the router always picks it from the question and the indexes
+      const result = await api.query(text, selected.length ? selected : undefined);
       turn = { question: text, result };
     } catch (err) {
       turn = { question: text, error: err instanceof Error ? err.message : "The question failed" };
@@ -152,33 +123,9 @@ export function ChatView() {
                 and come back to ask about it.
               </p>
             ) : (
-              <>
-                <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-soft">
-                  Ask about your documents. Every answer shows its sources, its precision and
-                  recall, and how it was routed.
-                </p>
-                <div className="mt-8 grid w-full gap-3 text-left sm:grid-cols-3">
-                  {EXAMPLES.map((example) => (
-                    <button
-                      key={example.question}
-                      type="button"
-                      onClick={() => {
-                        setQuestion(example.question);
-                        box.current?.focus();
-                      }}
-                      className="flex flex-col items-start rounded-2xl border border-line/70 bg-surface p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-accent/50"
-                    >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                        <example.icon width={18} height={18} />
-                      </span>
-                      <span className="mt-3 text-xs font-semibold uppercase tracking-wider text-ink-soft">
-                        {example.kind}
-                      </span>
-                      <span className="mt-1 text-sm font-medium leading-snug text-ink">{example.question}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-ink-soft">
+                Ask about your documents. Every answer shows its sources and how it was routed.
+              </p>
             )}
           </div>
         ) : (
@@ -268,25 +215,12 @@ export function ChatView() {
               )}
             </div>
 
-            <div
-              role="group"
-              aria-label="Retrieval mode"
-              className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-full bg-muted p-0.5"
+            <span
+              title="The search mode is picked automatically from the question and the indexes each document has"
+              className="whitespace-nowrap rounded-full bg-muted px-3 py-1.5 text-xs font-medium text-ink-soft"
             >
-              {modes.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  aria-pressed={m === activeMode}
-                  onClick={() => setMode(m)}
-                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs transition-colors ${
-                    m === activeMode ? "bg-surface font-medium text-ink shadow-sm" : "text-ink-soft hover:text-ink"
-                  }`}
-                >
-                  {m === "auto" ? "Automatic" : label(MODE_LABELS, m)}
-                </button>
-              ))}
-            </div>
+              Automatic
+            </span>
 
             <button
               type="submit"
@@ -303,9 +237,7 @@ export function ChatView() {
           </div>
         </form>
         <p className="mt-2 text-center text-[11px] text-ink-soft">
-          {modes.length < MODES.length
-            ? "Only modes these documents have an index for are shown. Build the keyword index or graph to unlock more."
-            : "Enter to send · Shift + Enter for a new line"}
+          Enter to send · Shift + Enter for a new line
         </p>
         <div ref={end} />
       </div>

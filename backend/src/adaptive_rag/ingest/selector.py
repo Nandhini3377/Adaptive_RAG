@@ -94,7 +94,8 @@ def _scan_summary(profile: DocumentProfile, many: bool) -> str:
     relationships = "many relationships" if many else "few relationships"
     return (
         f"The scan found {relationships} ({profile.relationship_density:.1f} per entity in "
-        f"the sample, {profile.cross_ref_rate:.1f} cross-references per 1,000 words), "
+        f"the sample, {profile.cross_ref_rate:.1f} cross-references and "
+        f"{profile.relationship_phrase_rate:.1f} relationship phrases per 1,000 words), "
         f"{profile.identifier_density:.1f} IDs per 1,000 words, "
         f"{profile.table_share:.0%} of text in tables, and about {profile.page_count} pages."
     )

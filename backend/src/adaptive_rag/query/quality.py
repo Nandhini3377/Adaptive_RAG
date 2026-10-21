@@ -10,7 +10,14 @@ measured against a pool (the "pooling" method from search evaluation):
 - Relative recall = relevant chunks used / relevant chunks in the whole pool
 
 Relative recall is an upper bound on true recall: a relevant chunk that no mode found
-is never counted. With a single mode there is nothing to compare, so it is None.
+is never counted.
+
+Single mode (`measure_single`, the default when modes are not compared): the pool is the
+candidates that one mode fetched (up to `quality_pool_size`), so
+- Precision = relevant chunks in the top k / top k
+- Recall    = relevant chunks in the top k / relevant chunks among the candidates
+That recall shows whether reranking kept the useful chunks; a chunk the search never
+fetched is not counted.
 
 The same numbers are reported for every mode in the pool, so the answer can be compared
 with the other indexes the documents have (vector-only is plain, traditional RAG). Every
@@ -19,12 +26,14 @@ mode is reranked the same way, so the comparison is between indexes, not reranke
 
 import logging
 from collections.abc import Callable
+from typing import Literal
 
 from pydantic import BaseModel
 
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLM
-from adaptive_rag.retrieval.base import Retriever
+from adaptive_rag.llm.safety import DATA_RULE, quoted
+from adaptive_rag.retrieval.base import Retriever, rerank_hits
 from adaptive_rag.schemas import Chunk, Mode, SearchHit
 
 log = logging.getLogger(__name__)
@@ -42,7 +51,8 @@ _JUDGE_PROMPT = """Decide which of the numbered passages help answer the questio
 A passage is relevant when it states the answer or part of it, or a rule, number, or
 relationship needed to work the answer out. A passage on the same topic that does not
 help answer this question is NOT relevant.
-Return the numbers of the relevant passages, or an empty list when none help.
+Return the ids of the relevant passages, or an empty list when none help.
+{data_rule}
 
 Question: {question}
 
@@ -72,6 +82,8 @@ class RetrievalQuality(BaseModel):
     pool_size: int
     compared_modes: list[str]
     modes: list[ModeQuality] = []  # the used mode first, then the others
+    # "modes": recall against every mode's chunks; "candidates": against one mode's fetch
+    recall_scope: Literal["modes", "candidates"] = "modes"
 
 
 class Selection(BaseModel):
@@ -123,6 +135,46 @@ def select_mode(
         if best.relevant:
             chosen = best.mode
     return Selection(mode=chosen, hits=results[chosen], quality=_quality_for(comparison, chosen))
+
+
+def measure_single(
+    question: str, mode: str, used: list[SearchHit], candidates: list[SearchHit], llm: LLM
+) -> RetrievalQuality | None:
+    """Precision and recall of one mode: its top k against everything it fetched.
+
+    One LLM call judges the used chunks plus the other candidates (capped at
+    `quality_pool_size`, in retrieval order). None when nothing was used.
+    """
+    if not used:
+        return None
+    pool: dict[str, Chunk] = {hit.chunk.id: hit.chunk for hit in used}
+    for hit in candidates:
+        if len(pool) >= max(settings.quality_pool_size, len(used)):
+            break
+        pool.setdefault(hit.chunk.id, hit.chunk)
+    relevant = _judge(question, list(pool.values()), llm)
+    relevant_used = sum(hit.chunk.id in relevant for hit in used)
+    precision = round(relevant_used / len(used), 3)
+    recall = round(relevant_used / len(relevant), 3) if relevant else None
+    mine = ModeQuality(
+        mode=mode,
+        used=True,
+        found=len(used),
+        relevant=relevant_used,
+        precision=precision,
+        recall=recall,
+    )
+    return RetrievalQuality(
+        precision=precision,
+        relative_recall=recall,
+        used=len(used),
+        relevant_used=relevant_used,
+        relevant_in_pool=len(relevant),
+        pool_size=len(pool),
+        compared_modes=[],
+        modes=[mine],
+        recall_scope="candidates",
+    )
 
 
 def measure_quality(
@@ -189,7 +241,7 @@ def search_mode(
         found = retriever.retrieve(search_query, owner_id, document_ids, settings.top_k)
         return found.hits[: settings.top_k]
     found = retriever.retrieve(search_query, owner_id, document_ids, settings.candidate_k)
-    return rerank(question, found.hits, settings.top_k)
+    return rerank_hits(rerank, question, found.hits, settings.top_k, found.graph_paths)
 
 
 class ModeComparison(BaseModel):
@@ -230,9 +282,10 @@ def compare_modes(
 
 def _judge(question: str, chunks: list[Chunk], llm: LLM) -> set[str]:
     """IDs of the chunks the LLM marks as relevant to the question."""
-    passages = "\n\n".join(f"[{n}] {chunk.text}" for n, chunk in enumerate(chunks, start=1))
+    passages = "\n\n".join(quoted(n, chunk.text) for n, chunk in enumerate(chunks, start=1))
+    prompt = _JUDGE_PROMPT.format(question=question, passages=passages, data_rule=DATA_RULE)
     response = llm.complete_json(
-        [{"role": "user", "content": _JUDGE_PROMPT.format(question=question, passages=passages)}],
+        [{"role": "user", "content": prompt}],
         _JUDGE_SCHEMA,
         name="relevance",
         max_tokens=settings.quality_max_tokens,

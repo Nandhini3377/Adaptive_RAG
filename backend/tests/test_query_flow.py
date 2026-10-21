@@ -221,7 +221,7 @@ def test_happy_path_answers_with_citations_and_timings():
         "ground",
         "select",
     }
-    assert meter.calls == 3  # generate + grounding + relevance judge (rules classified it)
+    assert meter.calls == 3  # judge + generate + grounding (rules classified it)
 
 
 def test_low_reranker_score_does_not_block_the_answer():
@@ -232,7 +232,7 @@ def test_low_reranker_score_does_not_block_the_answer():
     assert state["answer"].text == "No, sick leave is 10 days [1]."
     assert state["relevance"] < 0.05  # recorded for the Why panel, not used as a gate
     assert state["rewrites"] == []
-    assert meter.calls == 3  # answer + grounding + relevance judge, no rewrite
+    assert meter.calls == 3  # judge + answer + grounding, no rewrite
 
 
 def test_model_finding_no_answer_rewrites_then_answers():
@@ -254,7 +254,7 @@ def test_a_repeated_rewrite_stops_the_retries():
     assert retriever.queries == ["How many leave days?", "annual leave entitlement days"]
     assert state["rewrites"] == ["annual leave entitlement days"]
     assert state["answer"].text == INSUFFICIENT_EVIDENCE
-    assert meter.calls == 6  # 2 answers + 2 rewrites + a judge call per search, no third search
+    assert meter.calls == 6  # 2 answers + 2 rewrites + a judge per search
 
 
 def test_model_never_finds_an_answer_so_it_refuses_after_max_retries():

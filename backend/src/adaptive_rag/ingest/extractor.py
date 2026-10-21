@@ -10,6 +10,7 @@ from functools import partial
 
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLM, LLMTruncatedError
+from adaptive_rag.llm.safety import DATA_RULE, quoted
 from adaptive_rag.schemas import Chunk, GraphEntity, GraphExtraction, GraphRelation
 
 _SCHEMA = {
@@ -53,8 +54,9 @@ Entity type: one lowercase word, e.g. service, team, person, policy, code, produ
 Relationships: only ones the text states. For each, give:
 - source and target: entity names exactly as in your entity list
 - relation: UPPER_SNAKE_CASE verb, e.g. DEPENDS_ON, OWNED_BY, CALLS, PART_OF, REPORTS_TO
-- chunk: the [number] of the chunk that states it
+- chunk: the id of the <document> chunk that states it
 - confidence: 0-1, how clearly the text states it
+{data_rule}
 {known}
 Chunks:
 {chunks}"""
@@ -145,10 +147,11 @@ def _merge(
 def _extract_batch(
     batch: list[Chunk], known: list[GraphEntity], llm: LLM
 ) -> tuple[dict, int, float]:
-    numbered = "\n\n".join(f"[{n}] {chunk.text}" for n, chunk in enumerate(batch, start=1))
+    numbered = "\n\n".join(quoted(n, chunk.text) for n, chunk in enumerate(batch, start=1))
     known_text = _KNOWN.format(names=", ".join(e.name for e in known[:200])) if known else ""
+    prompt = _PROMPT.format(known=known_text, chunks=numbered, data_rule=DATA_RULE)
     response = llm.complete_json(
-        [{"role": "user", "content": _PROMPT.format(known=known_text, chunks=numbered)}],
+        [{"role": "user", "content": prompt}],
         _SCHEMA,
         name="graph_extraction",
         max_tokens=settings.extraction_max_tokens,

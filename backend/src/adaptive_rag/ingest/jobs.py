@@ -20,6 +20,7 @@ from adaptive_rag.ingest.scanner import group_sections, scan
 from adaptive_rag.ingest.selector import decide
 from adaptive_rag.ingest.strategy_llm import combine, llm_strategy
 from adaptive_rag.llm.base import LLMError
+from adaptive_rag.llm.safety import looks_like_injection
 from adaptive_rag.schemas import INDEX_ORDER, MODE_INDEXES, Chunk, DocumentProfile, Intent
 from adaptive_rag.store import db
 
@@ -187,6 +188,15 @@ def _chunk(document_id: str) -> tuple[list[Chunk], str, str]:
     chunks = chunk_elements(parse_file(path), document_id=document_id, owner_id=owner_id)
     with db.session_scope() as session:
         db.save_chunks(session, chunks)
+    suspicious = [c for c in chunks if looks_like_injection(c.text)]
+    if suspicious:  # flag only: answers already treat document text as data
+        sections = ", ".join(dict.fromkeys(c.section or "untitled" for c in suspicious))
+        log.warning("Possible prompt injection in %s: %d chunks", document_id, len(suspicious))
+        _note(
+            document_id,
+            f"Warning: {len(suspicious)} passage(s) contain text that looks like instructions "
+            f"to an AI (sections: {sections}). Answers treat it as quoted text, not orders",
+        )
     return chunks, owner_id, strategy
 
 

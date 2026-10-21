@@ -9,6 +9,7 @@ import re
 
 from adaptive_rag.config import settings
 from adaptive_rag.llm.base import LLM, LLMResponse, LLMTruncatedError
+from adaptive_rag.llm.safety import DATA_RULE, quoted
 from adaptive_rag.schemas import DocumentProfile, Section
 
 _EXTRACTION_SCHEMA = {
@@ -48,6 +49,7 @@ _PROMPT = """Extract named entities and the relationships between them from thes
   {{"source": "Payments", "relation": "DEPENDS_ON", "target": "Auth"}}.
 - Use UPPER_SNAKE_CASE relation names.
 - List at most {limit} entities and {limit} relationships: the most important ones.
+{data_rule}
 
 Sections:
 """
@@ -107,7 +109,8 @@ def analyze_sample(sections: list[Section], profile: DocumentProfile, llm: LLM) 
 
 def _extract_sample(sample: list[Section], llm: LLM) -> LLMResponse | None:
     """One extraction call over the sample; None if the answer was cut off."""
-    prompt = _PROMPT.format(limit=settings.sample_max_items) + _sample_text(sample)
+    rules = _PROMPT.format(limit=settings.sample_max_items, data_rule=DATA_RULE)
+    prompt = rules + _sample_text(sample)
     try:
         return llm.complete_json(
             [{"role": "user", "content": prompt}],
@@ -135,7 +138,9 @@ def entity_repetition(entities: list[str], sections: list[Section]) -> float:
 def _sample_text(sample: list[Section]) -> str:
     """The sampled sections as text, cut to the character budget."""
     budget = settings.sample_max_chars // len(sample)
-    return "\n\n".join(f"## {s.title}\n{s.text[:budget]}" for s in sample)
+    return "\n\n".join(
+        quoted(n, s.text[:budget], s.title.replace('"', "'")) for n, s in enumerate(sample, 1)
+    )
 
 
 def _unique(names: list[str]) -> list[str]:

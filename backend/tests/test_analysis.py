@@ -132,7 +132,7 @@ def test_cut_off_sample_is_retried_with_half_the_sections():
 
     class FitsFiveSections(FakeLLM):
         def complete_json(self, messages, schema, **kwargs):
-            if messages[0]["content"].count("\n## ") > 5:
+            if messages[0]["content"].count("<document ") > 5:
                 self.calls.append(messages)
                 raise LLMTruncatedError("cut off")
             return super().complete_json(messages, schema, **kwargs)
@@ -174,6 +174,12 @@ def test_many_relationships_rule():
     assert many_relationships(profile(cross_ref_rate=2.5, relationship_phrase_rate=3.5))
     assert not many_relationships(profile(cross_ref_rate=2.5, relationship_phrase_rate=1.0))
     assert not many_relationships(profile(relationship_density=1.5))  # strictly greater
+
+
+def test_very_dense_relationship_phrases_count_without_cross_references():
+    # Dependencies written as "X depends on Y" sentences, no "see Section N"
+    assert many_relationships(profile(cross_ref_rate=0.3, relationship_phrase_rate=13.5))
+    assert not many_relationships(profile(cross_ref_rate=0.3, relationship_phrase_rate=9.0))
 
 
 def test_suggested_intents_follow_the_scan():

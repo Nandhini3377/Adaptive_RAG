@@ -12,10 +12,15 @@ INTENT_LABELS: dict[Intent, str] = {
 
 
 def many_relationships(profile: DocumentProfile) -> bool:
-    """PRD FR16: dense relationships in the sample, or many cross-refs AND relation phrases."""
-    return profile.relationship_density > settings.many_relationships_density or (
-        profile.cross_ref_rate > settings.many_relationships_cross_ref_rate
-        and profile.relationship_phrase_rate > settings.many_relationships_phrase_rate
+    """PRD FR16: dense relationships in the sample, or many cross-refs AND relation phrases,
+    or relation phrases so dense they count alone (relationships written as sentences)."""
+    return (
+        profile.relationship_density > settings.many_relationships_density
+        or (
+            profile.cross_ref_rate > settings.many_relationships_cross_ref_rate
+            and profile.relationship_phrase_rate > settings.many_relationships_phrase_rate
+        )
+        or profile.relationship_phrase_rate > settings.many_relationships_phrase_only_rate
     )
 
 

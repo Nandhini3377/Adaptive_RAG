@@ -22,10 +22,13 @@ HITS = [
 
 
 def test_prompt_numbers_evidence_with_sources():
-    """Each chunk appears as [n] with its section and page."""
+    """Each chunk is a <document> block whose id is cited as [n], with section and page."""
     user_prompt = build_messages("How much leave?", HITS)[1]["content"]
-    assert "[1] (Section: Leave Policy, page 3)\nEmployees receive 20 days" in user_prompt
-    assert "[2] (Section: Leave Types)\nSick leave is 10 days." in user_prompt
+    assert (
+        '<document id="1" source="Section: Leave Policy, page 3">\nEmployees receive 20 days'
+        in user_prompt
+    )
+    assert '<document id="2" source="Section: Leave Types">\nSick leave is 10 days.' in user_prompt
     assert user_prompt.endswith("Question: How much leave?")
 
 

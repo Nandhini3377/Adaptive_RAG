@@ -113,6 +113,7 @@ export interface RetrievalQuality {
   pool_size: number;
   compared_modes: string[];
   modes: ModeQuality[]; // the used mode first, then every other indexed mode
+  recall_scope: "modes" | "candidates"; // recall against every mode, or one mode's own fetch
 }
 
 export interface QueryOut {
@@ -132,6 +133,7 @@ export interface QueryOut {
   graph_paths: GraphPath[];
   scores: { relevance: number; relevance_history: number[]; grounding: number | null };
   quality: RetrievalQuality | null;
+  comparison: string;
   regenerated: boolean;
   refused_reason: string;
   documents: Record<string, string>;

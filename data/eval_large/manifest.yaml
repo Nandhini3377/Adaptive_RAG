@@ -1,0 +1,13 @@
+documents:
+- file: orion_architecture.md
+  profile: many services and multi-hop dependencies
+  intents:
+  - connections
+  - compare
+  expected_strategy: graph_hybrid
+- file: orion_pay_reference.md
+  profile: near-identical IDs and settings
+  intents:
+  - facts
+  - exact_terms
+  expected_strategy: hybrid

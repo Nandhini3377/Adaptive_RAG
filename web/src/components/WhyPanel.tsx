@@ -57,7 +57,7 @@ export function WhyPanel({ result }: { result: QueryOut }) {
             value={label(MODE_LABELS, result.mode)}
             note={
               !result.quality
-                ? "not measured"
+                ? result.comparison || "not measured"
                 : result.mode === result.router_mode
                   ? "confirmed by measuring"
                   : "best measured evidence"
@@ -113,14 +113,26 @@ export function WhyPanel({ result }: { result: QueryOut }) {
             </>
           ) : (
             <>
-              <Meter
-                label="Precision"
-                value={result.quality.precision}
-                hint={`${result.quality.relevant_used} of the ${result.quality.used} chunks given to the model were relevant to the question.`}
-              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Meter
+                  label="Precision"
+                  value={result.quality.precision}
+                  hint={`${result.quality.relevant_used} of the ${result.quality.used} chunks given to the model were relevant to the question.`}
+                />
+                <Meter
+                  label="Recall"
+                  value={result.quality.relative_recall}
+                  hint={
+                    result.quality.relevant_in_pool
+                      ? `${result.quality.relevant_used} of the ${result.quality.relevant_in_pool} relevant chunks among the ${result.quality.pool_size} this mode fetched made the top ${result.quality.used}.`
+                      : `None of the ${result.quality.pool_size} chunks this mode fetched was relevant.`
+                  }
+                />
+              </div>
               <p className="mt-2.5 text-xs leading-relaxed text-ink-soft">
-                These documents have only the vector index (traditional RAG), so there is no other mode to compare
-                with and recall is not measured. Try the Evaluation Lab to compare every mode on a short text.
+                Only the router&apos;s pick searched. Relevance is judged by the LLM over the chunks that mode
+                fetched, so recall shows whether ranking kept the useful ones; a chunk the search never fetched
+                is not counted.
               </p>
             </>
           )}

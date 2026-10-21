@@ -6,3 +6,5 @@ data/uploads/
 data/qdrant/
 data/app.db
 .pytest_cache/
+Interview_Questions.pdf
+INTERVIEW_NOTES.md
